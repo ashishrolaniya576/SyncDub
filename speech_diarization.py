@@ -1,6 +1,7 @@
 from pyannote.audio import Pipeline
 import torch
 import os
+import time
 
 class SpeakerDiarizer:
     def __init__(self, hf_token):
@@ -8,8 +9,9 @@ class SpeakerDiarizer:
         self.diarization_pipeline = None
         try:
             print("Loading diarization pipeline...")
+            # Use the newer version that's compatible with your libraries
             self.diarization_pipeline = Pipeline.from_pretrained(
-                "pyannote/speaker-diarization@2.1",
+                "pyannote/speaker-diarization-3.1",
                 use_auth_token=hf_token
             )
             print("Diarization model loaded successfully!")
@@ -23,19 +25,31 @@ class SpeakerDiarizer:
             return []
         
         try:
+            print("Starting speaker diarization (this may take several minutes for longer files)...")
+            start_time = time.time()
+            
             # Set parameters for diarization
             params = {}
             if min_speakers is not None:
                 params["min_speakers"] = min_speakers
             if max_speakers is not None:
                 params["max_speakers"] = max_speakers
-                
+            
+            # Add progress updates
+            print("Running diarization model...")
+            
             # Use the diarization pipeline
             diarization = self.diarization_pipeline(audio_path, **params)
             
+            print("Processing diarization results...")
             speakers = []
             for turn, _, speaker in diarization.itertracks(yield_label=True):
                 speakers.append({'start': turn.start, 'end': turn.end, 'speaker': speaker})
+            
+            duration = time.time() - start_time
+            print(f"Diarization completed in {duration:.1f} seconds")
+            print(f"Detected {len(set(s['speaker'] for s in speakers))} unique speakers")
+            
             return speakers
         except Exception as e:
             print(f"Error during diarization: {e}")
