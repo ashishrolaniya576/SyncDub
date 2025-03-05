@@ -10,3 +10,4 @@ scipy
 numpy
 pydub
 ffmpeg-python
+dotenv

@@ -5,7 +5,7 @@ class SpeechRecognizer:
     def __init__(self, model_size="base"):
         self.model = whisper.load_model(model_size)
         
-    def transcribe(self, audio_path, language=None):
+    def transcribe(self, audio_path, language="en"):
         """Transcribe audio file with timestamps"""
         # Get results with word timestamps
         result = self.model.transcribe(
