@@ -4,21 +4,27 @@ import os
 import time
 
 class SpeakerDiarizer:
-    def __init__(self, hf_token):
+    def __init__(self, hf_token, device=None):
         """Initialize speaker diarization with HuggingFace token"""
         self.diarization_pipeline = None
         try:
             print("Loading diarization pipeline...")
+            # Check available devices
+            if device is None:
+                device = "cuda:0" if torch.cuda.is_available() else "cpu"
+            print(f"Using device: {device}")
+            
             # Use the newer version that's compatible with your libraries
             self.diarization_pipeline = Pipeline.from_pretrained(
                 "pyannote/speaker-diarization-3.1",
                 use_auth_token=hf_token
             )
+            self.diarization_pipeline.to(torch.device(device))
             print("Diarization model loaded successfully!")
         except Exception as e:
             print(f"Error loading diarization model: {e}")
     
-    def diarize(self, audio_path, min_speakers=1, max_speakers=None):
+    def diarize(self, audio_path, min_speakers=1, max_speakers=None, device=None):
         """Identify speakers in audio file"""
         if not self.diarization_pipeline:
             print("Diarization pipeline not available")
@@ -35,8 +41,15 @@ class SpeakerDiarizer:
             if max_speakers is not None:
                 params["max_speakers"] = max_speakers
             
+            # Set device if specified (cuda:0, cpu, etc.)
+            if device:
+                print(f"Using device: {device}")
+                self.diarization_pipeline.to(torch.device(device))
+            
             # Add progress updates
             print("Running diarization model...")
+            print("This process may take several minutes with no visible progress...")
+            print("Consider using a smaller audio segment for testing")
             
             # Use the diarization pipeline
             diarization = self.diarization_pipeline(audio_path, **params)
