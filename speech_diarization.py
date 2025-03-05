@@ -17,18 +17,20 @@ class SpeakerDiarizer:
             params["max_speakers"] = max_speakers
             
         # Run diarization
-        diarization = self.pipeline(audio_path, **params)
-        
-        # Process results into a more usable format
-        speakers = []
-        for turn, _, speaker in diarization.itertracks(yield_label=True):
-            speakers.append({
-                "speaker": speaker,
-                "start": turn.start,
-                "end": turn.end
-            })
-            
-        return speakers
+        if not self.diarization_pipeline:
+            print("Diarization model not initialized.")
+            return []
+        try:
+            print(f"Running diarization on {audio_path} ...")
+            # Call the pipeline with the audio file path directly.
+            diarization = self.diarization_pipeline(audio_path,num_speakers=1)
+            speakers = []
+            for turn, _, speaker in diarization.itertracks(yield_label=True):
+                speakers.append({'start': turn.start, 'end': turn.end, 'speaker': speaker})
+            return speakers
+        except Exception as e:
+            print(f"Error during diarization: {e}")
+            return []
     
     def assign_speakers_to_segments(self, segments, speakers):
         """Match transcription segments with speaker information"""
