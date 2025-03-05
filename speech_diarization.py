@@ -1,26 +1,38 @@
 from pyannote.audio import Pipeline
 import torch
+import os
 
 class SpeakerDiarizer:
     def __init__(self, hf_token):
         """Initialize speaker diarization with HuggingFace token"""
-        self.pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.0",
-            use_auth_token=hf_token
-        )
-        
+        self.diarization_pipeline = None
+        try:
+            print("Loading diarization pipeline...")
+            self.diarization_pipeline = Pipeline.from_pretrained(
+                "pyannote/speaker-diarization@2.1",
+                use_auth_token=hf_token
+            )
+            print("Diarization model loaded successfully!")
+        except Exception as e:
+            print(f"Error loading diarization model: {e}")
+    
     def diarize(self, audio_path, min_speakers=1, max_speakers=None):
         """Identify speakers in audio file"""
-        # Set diarization parameters
-        params = {"min_speakers": min_speakers}
-        if max_speakers:
-            params["max_speakers"] = max_speakers
-            
-        # Run diarization
+        if not self.diarization_pipeline:
+            print("Diarization pipeline not available")
+            return []
+        
         try:
-            print(f"Running diarization on {audio_path} ...")
-            # Use self.pipeline instead of self.diarization_pipeline and pass the params
-            diarization = self.pipeline(audio_path, **params)
+            # Set parameters for diarization
+            params = {}
+            if min_speakers is not None:
+                params["min_speakers"] = min_speakers
+            if max_speakers is not None:
+                params["max_speakers"] = max_speakers
+                
+            # Use the diarization pipeline
+            diarization = self.diarization_pipeline(audio_path, **params)
+            
             speakers = []
             for turn, _, speaker in diarization.itertracks(yield_label=True):
                 speakers.append({'start': turn.start, 'end': turn.end, 'speaker': speaker})
