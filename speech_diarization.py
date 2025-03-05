@@ -17,13 +17,10 @@ class SpeakerDiarizer:
             params["max_speakers"] = max_speakers
             
         # Run diarization
-        if not self.diarization_pipeline:
-            print("Diarization model not initialized.")
-            return []
         try:
             print(f"Running diarization on {audio_path} ...")
-            # Call the pipeline with the audio file path directly.
-            diarization = self.diarization_pipeline(audio_path,num_speakers=1)
+            # Use self.pipeline instead of self.diarization_pipeline and pass the params
+            diarization = self.pipeline(audio_path, **params)
             speakers = []
             for turn, _, speaker in diarization.itertracks(yield_label=True):
                 speakers.append({'start': turn.start, 'end': turn.end, 'speaker': speaker})
