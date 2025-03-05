@@ -1,0 +1,12 @@
+yt-dlp
+moviepy
+whisper
+pyannote.audio
+deep-translator
+edge-tts
+librosa
+soundfile
+scipy
+numpy
+pydub
+ffmpeg-python
