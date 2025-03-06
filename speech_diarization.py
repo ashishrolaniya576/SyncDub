@@ -91,7 +91,7 @@ class SpeakerDiarizer:
             
             return False
     
-    def diarize(self, audio_path: str, min_speakers: int = 1, max_speakers: int = 3) -> List[Dict[str, Any]]:
+    def diarize(self, audio_path: str, min_speakers: int = 1, max_speakers: int = 2) -> List[Dict[str, Any]]:
         """
         Perform speaker diarization on audio file
         
