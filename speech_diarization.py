@@ -91,7 +91,7 @@ class SpeakerDiarizer:
             
             return False
     
-    def diarize(self, audio_path: str, min_speakers: int = 1, max_speakers: int = 2) -> List[Dict[str, Any]]:
+    def diarize(self, audio_path: str, min_speakers: int = 1, max_speakers: int = 3) -> List[Dict[str, Any]]:
         """
         Perform speaker diarization on audio file
         
@@ -135,7 +135,8 @@ class SpeakerDiarizer:
             
             # Encode speaker IDs consistently (SPEAKER_00, SPEAKER_01, etc.)
             speakers = self._reencode_speakers(speakers)
-            
+            print(f"Diarization completed in {time.time() - start_time:.1f}s")
+            print(f"Found {len(set(s['speaker'] for s in speakers))} speakers")
             logger.info(f"Diarization completed in {time.time() - start_time:.1f}s")
             logger.info(f"Found {len(set(s['speaker'] for s in speakers))} speakers")
             
