@@ -57,11 +57,18 @@ class SpeakerDiarizer:
             print("Processing diarization results...")
             speakers = []
             for turn, _, speaker in diarization.itertracks(yield_label=True):
-                speakers.append({'start': turn.start, 'end': turn.end, 'speaker': speaker})
+                speakers.append({
+                    'start': turn.start,
+                    'end': turn.end,
+                    'speaker': speaker
+                })
             
-            duration = time.time() - start_time
-            print(f"Diarization completed in {duration:.1f} seconds")
-            print(f"Detected {len(set(s['speaker'] for s in speakers))} unique speakers")
+            # Encode speaker IDs consistently (SPEAKER_00, SPEAKER_01, etc.)
+            speakers = self._reencode_speakers(speakers)
+            print(f"Diarization completed in {time.time() - start_time:.1f}s")
+            print(f"Found {len(set(s['speaker'] for s in speakers))} speakers")
+            logger.info(f"Diarization completed in {time.time() - start_time:.1f}s")
+            logger.info(f"Found {len(set(s['speaker'] for s in speakers))} speakers")
             
             return speakers
         except Exception as e:
