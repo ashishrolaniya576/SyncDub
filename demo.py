@@ -1,12 +1,25 @@
 import os
+import sys
 import logging
 from dotenv import load_dotenv
+import re
+
+# Add the current directory to path to help with imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
+# Import the required modules
 from media_ingestion import MediaIngester
 from speech_recognition import SpeechRecognizer
 from speech_diarization import SpeakerDiarizer
 from translate import translate_text
-from text_to_speech import audio_segmentation_to_voice, accelerate_segments, toneconverter
-from utils import create_directories
+from text_to_speech import generate_speech, adjust_speech_timing, apply_voice_effects
+
+def create_directories(dirs):
+    """Create necessary directories"""
+    for directory in dirs:
+        os.makedirs(directory, exist_ok=True)
 
 def main():
     # Load environment variables
@@ -39,7 +52,7 @@ def main():
     # Step 1: Process input and extract audio
     logger.info("Processing media source...")
     video_path = ingester.process_input(media_source)
-    audio_path = ingester.extract_audio(video_path, output_path="audio.wav")
+    audio_path = ingester.extract_audio(video_path)
     
     # Step 2: Perform speech recognition
     logger.info("Transcribing audio...")
@@ -47,7 +60,13 @@ def main():
     
     # Step 3: Perform speaker diarization
     logger.info("Identifying speakers...")
-    speakers = diarizer.diarize(audio_path)
+    
+    # Add user input for max speakers
+    max_speakers_str = input("Maximum number of speakers to detect (leave blank for auto): ")
+    max_speakers = int(max_speakers_str) if max_speakers_str.strip() else None
+
+    # Then call diarize with this parameter
+    speakers = diarizer.diarize(audio_path, max_speakers=max_speakers)
     
     # Step 4: Assign speakers to segments
     logger.info("Assigning speakers to segments...")
@@ -61,52 +80,49 @@ def main():
         translation_method="groq"  # Can be "batch" or "iterative" or "groq"
     )
     
-    # Prepare result structure for TTS
-    result_diarize = {"segments": translated_segments}
+    # Step 6: Configure voice characteristics for speakers
+    voice_config = {}  # Map of speaker_id to gender
     
-    # Step 6: Generate speech in target language
+    # Detect number of unique speakers
+    unique_speakers = set()
+    for segment in translated_segments:
+        if 'speaker' in segment:
+            unique_speakers.add(segment['speaker'])
+    
+    # For demo purposes, ask about first two speakers only if there are multiple
+    if len(unique_speakers) > 1:
+        logger.info(f"Detected {len(unique_speakers)} speakers")
+        
+        for speaker in sorted(list(unique_speakers))[:2]:  # Only ask about first two
+            match = re.search(r'SPEAKER_(\d+)', speaker)
+            if match:
+                speaker_id = int(match.group(1))
+                gender = input(f"Select voice gender for Speaker {speaker_id+1} (m/f): ").lower()
+                voice_config[speaker_id] = "female" if gender.startswith("f") else "male"
+    
+    # Step 7: Generate speech in target language
     logger.info("Generating speech...")
-    # You can select different voices for different speakers
-    # Default voice selections based on available voices in your system
-    valid_speakers = audio_segmentation_to_voice(
-        result_diarize,
-        TRANSLATE_AUDIO_TO=target_language,
-        is_gui=False,
-        # Select appropriate voices for your target language
-        tts_voice00="en-US-AriaNeural-Female",  # Default voice for SPEAKER_00
-        tts_voice01="en-US-GuyNeural-Male",     # Default voice for SPEAKER_01
-        tts_voice02="en-GB-SoniaNeural-Female", # Default voice for SPEAKER_02
-        # Add more voices as needed for additional speakers
-    )
+    generate_speech(translated_segments, target_language, voice_config)
     
-    # Step 7: Adjust speech timing to match original
+    # Step 8: Adjust speech timing to match original
     logger.info("Adjusting speech timing...")
-    audio_files, speakers_list = accelerate_segments(
-        result_diarize,
-        max_accelerate_audio=2.0,
-        valid_speakers=valid_speakers
-    )
+    output_files, speaker_names = adjust_speech_timing(translated_segments, max_speed=2.0)
     
-    # Optional: Apply voice conversion to make synthetic voices sound more natural
-    use_voice_conversion = input("Apply voice conversion to make TTS voices sound more natural? (y/n): ").lower() == 'y'
-    if use_voice_conversion:
-        logger.info("Applying voice conversion...")
-        toneconverter(
-            result_diarize,
-            preprocessor_max_segments=3,
-            method_vc="freevc"  # Can be "freevc" or "openvoice"
-        )
+    # Optional: Apply voice effects 
+    use_effects = input("Apply voice effects to make speakers more distinctive? (y/n): ").lower() == 'y'
+    if use_effects:
+        logger.info("Applying voice effects...")
+        apply_voice_effects(translated_segments)
     
-    # Step 8: Create final video with translated speech
-    logger.info("Generating final video...")
-    # Add code to merge the translated audio with the original video
-    # This could use ffmpeg to replace the audio track in the original video
-    
-    # You might need to implement a function like:
-    # merge_audio_with_video(video_path, "audio2/audio", output_path="output.mp4")
-    
+    # Step 9: Final output
     logger.info("Translation and dubbing completed successfully!")
-    logger.info(f"Processed audio files: {len(audio_files)}")
+    logger.info(f"Processed {len(output_files)} audio segments")
+    logger.info("The dubbed audio segments are in the 'audio2/audio' directory")
+    
+    # Suggest next steps
+    logger.info("\nNext steps:")
+    logger.info("1. You can now merge these audio segments with the original video")
+    logger.info("2. Use a tool like ffmpeg to combine the segments with the video")
 
 if __name__ == "__main__":
     main()

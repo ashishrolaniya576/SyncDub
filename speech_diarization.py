@@ -88,3 +88,23 @@ class SpeakerDiarizer:
                 segment["speaker"] = "unknown"
                 
         return segments
+
+    def _reencode_speakers(self, speakers):
+        """Ensure consistent speaker IDs (SPEAKER_00, SPEAKER_01, etc.)"""
+        if not speakers:
+            return speakers
+            
+        # Get unique speaker IDs
+        unique_speakers = set()
+        for turn in speakers:
+            unique_speakers.add(turn['speaker'])
+        
+        # Create mapping
+        speaker_map = {old_id: f"SPEAKER_{i:02d}" 
+                    for i, old_id in enumerate(sorted(unique_speakers))}
+        
+        # Apply mapping
+        for turn in speakers:
+            turn['speaker'] = speaker_map[turn['speaker']]
+        
+        return speakers
