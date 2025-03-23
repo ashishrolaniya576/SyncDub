@@ -205,7 +205,7 @@ def generate_speech(segments, target_language, voice_config=None,output_dir="aud
         combined = combined.overlay(segment_audio, position=position_ms)
         # Export the final combined audio
     combined.export(output_path, format="wav")
-    logger.info(f"  Final combined duration: {len(combined_audio) / 1000:.2f}s")
+    logger.info(f"  Final combined duration: {len(combined) / 1000:.2f}s")
     
         # Clean up segment files
     for file in audio_files:
