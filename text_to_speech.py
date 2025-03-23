@@ -202,7 +202,7 @@ def generate_speech(segments, target_language, voice_config=None,output_dir="aud
         # Position in ms
         position_ms = int(segment['start'] * 1000)
         # Add to combined audio
-        combined_audio = combined_audio.overlay(segment_audio, position=position_ms)
+        combined = combined.overlay(segment_audio, position=position_ms)
         # Export the final combined audio
     combined.export(output_path, format="wav")
     logger.info(f"  Final combined duration: {len(combined_audio) / 1000:.2f}s")
