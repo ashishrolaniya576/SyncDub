@@ -102,17 +102,17 @@ def main():
     
     # Step 7: Generate speech in target language
     logger.info("Generating speech...")
-    generate_speech(translated_segments, target_language, voice_config)
+    generate_speech(translated_segments, target_language, voice_config, output_dir="audio2")
     
-    # Step 8: Adjust speech timing to match original
-    logger.info("Adjusting speech timing...")
-    output_files, speaker_names = adjust_speech_timing(translated_segments, max_speed=2.0)
+    # # Step 8: Adjust speech timing to match original
+    # logger.info("Adjusting speech timing...")
+    # output_files, speaker_names = adjust_speech_timing(translated_segments, max_speed=2.0)
     
-    # Optional: Apply voice effects 
-    use_effects = input("Apply voice effects to make speakers more distinctive? (y/n): ").lower() == 'y'
-    if use_effects:
-        logger.info("Applying voice effects...")
-        apply_voice_effects(translated_segments)
+    # # Optional: Apply voice effects 
+    # use_effects = input("Apply voice effects to make speakers more distinctive? (y/n): ").lower() == 'y'
+    # if use_effects:
+    #     logger.info("Applying voice effects...")
+    #     apply_voice_effects(translated_segments)
     
     # Step 9: Final output
     logger.info("Translation and dubbing completed successfully!")

@@ -136,7 +136,7 @@ def create_voice_clone(text, gender, output_path, target_duration=None, language
     
     return output_path
 
-def generate_speech(segments, target_language, voice_config=None):
+def generate_speech(segments, target_language, voice_config=None,output_dir="audio2"):
     """
     Generate speech for all segments
     
@@ -148,6 +148,14 @@ def generate_speech(segments, target_language, voice_config=None):
     Returns:
         List of created audio files
     """
+    # Ensure output directory exists
+    os.makedirs(f"{output_dir}", exist_ok=True)
+    # Generate the full audio
+    output_path = os.path.join(output_dir, "dubbed_conversation.wav")
+    max_end_time = max(segment['end'] for segment in segments)
+    
+    # Create a silent audio of the total duration
+    combined = AudioSegment.silent(duration=int(max_end_time * 1000) + 100) 
     ensure_directories()
     audio_files = []
     
@@ -188,8 +196,39 @@ def generate_speech(segments, target_language, voice_config=None):
         )
         
         audio_files.append(output_file)
+
+        # Add segment to combined audio at the exact timestamp
+        segment_audio = AudioSegment.from_file(output_file)
+        # Position in ms
+        position_ms = int(segment['start'] * 1000)
+        # Add to combined audio
+        combined_audio = combined_audio.overlay(segment_audio, position=position_ms)
+        # Export the final combined audio
+    combined.export(output_path, format="wav")
+    logger.info(f"  Final combined duration: {len(combined_audio) / 1000:.2f}s")
     
-    return audio_files
+        # Clean up segment files
+    for file in audio_files:
+        try:
+            os.remove(file)
+        except:
+            pass
+    
+    # Verify the final duration
+    final_audio = AudioSegment.from_file(output_path)
+    final_duration_sec = len(final_audio) / 1000
+    
+    print(f"\nTarget duration: {max_end_time:.2f} seconds")
+    print(f"Actual duration: {final_duration_sec:.2f} seconds")
+    
+    # If the final audio is still too long, trim it
+    if final_duration_sec > max_end_time + 0.1:  # Allow 100ms grace
+        trimmed = final_audio[:int(max_end_time * 1000)]
+        trimmed.export(output_path, format="wav")
+        print(f"Trimmed to exactly {max_end_time:.2f} seconds")
+            
+
+    return output_path
 
 def adjust_speech_timing(segments, max_speed=2.0, output_dir="audio2"):
     """
