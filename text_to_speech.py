@@ -94,10 +94,29 @@ def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=N
             logger.info(f"  Adjusting timing: {current_duration:.2f}s → {target_duration:.2f}s (factor: {speed_factor:.2f})")
             
             # Apply time adjustment
-            if speed_factor > 1:
-                audio = audio.speedup(playback_speed=speed_factor)
+            # Instead of speed adjustments after generation, use Edge TTS rate parameter
+            rate_adjustment = f"{int((speed_factor - 1) * 100)}%"
+            if speed_factor < 1:
+                rate_adjustment = f"-{int((1 - speed_factor) * 100)}%"
             else:
-                audio = effects.time_stretch(audio, 1/speed_factor)
+                rate_adjustment = f"+{int((speed_factor - 1) * 100)}%"
+            
+            # Regenerate with adjusted rate
+            os.unlink(temp_file.name)  # Remove the previous temp file
+            
+            # Create new command with rate parameter
+            command = [
+                "edge-tts",
+                f"--pitch=+{pitch}Hz",
+                f"--rate={rate_adjustment}",
+                "--voice", voice,
+                "--text", text,
+                "--write-media", temp_filename
+            ]
+            subprocess.run(command, check=True)
+            
+            # Reload audio with rate adjustment
+            audio = AudioSegment.from_file(temp_filename, format="mp3")
             
             # Fine-tune if needed
             new_duration = len(audio) / 1000
