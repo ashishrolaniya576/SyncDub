@@ -14,7 +14,7 @@ from media_ingestion import MediaIngester
 from speech_recognition import SpeechRecognizer
 from speech_diarization import SpeakerDiarizer
 from translate import translate_text, generate_srt_subtitles
-from text_to_speech import generate_speech, adjust_speech_timing, apply_voice_effects
+from text_to_speech import generate_edge_tts
 
 def create_directories(dirs):
     """Create necessary directories"""
@@ -92,20 +92,19 @@ def main():
         if 'speaker' in segment:
             unique_speakers.add(segment['speaker'])
     
-    # For demo purposes, ask about first two speakers only if there are multiple
     if len(unique_speakers) > 1:
         logger.info(f"Detected {len(unique_speakers)} speakers")
-        
-        for speaker in sorted(list(unique_speakers))[:2]:  # Only ask about first two
+        for speaker in sorted(list(unique_speakers)):  
             match = re.search(r'SPEAKER_(\d+)', speaker)
             if match:
                 speaker_id = int(match.group(1))
                 gender = input(f"Select voice gender for Speaker {speaker_id+1} (m/f): ").lower()
                 voice_config[speaker_id] = "female" if gender.startswith("f") else "male"
     
+    
     # Step 7: Generate speech in target language
     logger.info("Generating speech...")
-    generate_speech(translated_segments, target_language, voice_config, output_dir="audio2")
+    generate_edge_tts(translated_segments, target_language, voice_config, output_dir="audio2")
     
     
 

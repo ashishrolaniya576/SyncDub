@@ -3,7 +3,6 @@ import os
 import re
 import tempfile
 import logging
-import edge_tts
 from pydub import AudioSegment
 from pathlib import Path
 import subprocess
@@ -55,17 +54,6 @@ def setup_audio_effects():
     return effects
 
 effects = setup_audio_effects()
-
-def estimate_speech_rate(text, target_duration):
-    """Estimate speech rate factor based on text length and target duration"""
-    syllable_count = len(text.split()) * 3  # Rough approximation
-    natural_duration = syllable_count / 4.5  # Using 4.5 syllables/sec
-    
-    if target_duration <= 0:
-        return 1.0
-    
-    rate_factor = natural_duration / target_duration
-    return max(0.7, min(1.8, rate_factor))  # Limit to reasonable range
 
 def adjust_audio_duration(audio_segment, target_duration):
     """Adjust audio to target duration by adding silence or trimming"""
@@ -129,6 +117,58 @@ def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=N
     
     return output_path
 
+def configure_voice_characteristics(voice_config):
+    """
+    Enhances the voice_config by adding specific voice models and pitch values
+    to create distinct voices for each speaker.
+    
+    Args:
+        voice_config: A dictionary mapping speaker_id to gender ('male' or 'female')
+    
+    Returns:
+        Enhanced voice_config with voice model and pitch values
+    """
+    # Default voice models for Hindi
+    male_voice = "hi-IN-MadhurNeural"
+    female_voice = "hi-IN-SwaraNeural"
+    
+    # Pitch variations for multiple speakers of same gender
+    male_pitches = [0, -30, 40]  # Default, deeper, higher
+    female_pitches = [0, 25, -25]  # Default, higher, deeper
+    
+    # Count number of males and females
+    male_count = sum(1 for gender in voice_config.values() if gender == "male")
+    female_count = sum(1 for gender in voice_config.values() if gender == "female")
+    
+    # Track current male and female speaker indices
+    current_male = 0
+    current_female = 0
+    
+    # Enhanced voice configuration
+    enhanced_config = {}
+    
+    for speaker_id, gender in voice_config.items():
+        if gender == "male":
+            # Assign voice and pitch based on male index
+            pitch = male_pitches[current_male % len(male_pitches)]
+            enhanced_config[speaker_id] = {
+                'gender': gender,
+                'voice': male_voice,
+                'pitch': pitch
+            }
+            current_male += 1
+        else:  # female
+            # Assign voice and pitch based on female index
+            pitch = female_pitches[current_female % len(female_pitches)]
+            enhanced_config[speaker_id] = {
+                'gender': gender,
+                'voice': female_voice,
+                'pitch': pitch
+            }
+            current_female += 1
+    
+    return enhanced_config
+
 def generate_edge_tts(segments, target_language, voice_config=None,output_dir="audio2"):
     """
     Generate speech for all segments
@@ -152,6 +192,8 @@ def generate_edge_tts(segments, target_language, voice_config=None,output_dir="a
     ensure_directories()
     audio_files = []
     
+    voice_config = configure_voice_characteristics(voice_config)
+
     # Default voice configuration if none provided
     if voice_config is None:
         voice_config = {}
@@ -162,9 +204,9 @@ def generate_edge_tts(segments, target_language, voice_config=None,output_dir="a
         speaker = segment.get('speaker', 'SPEAKER_00')
         match = re.search(r'SPEAKER_(\d+)', speaker)
         speaker_id = int(match.group(1)) if match else 0
-        
-        # Determine gender (default to alternating)
-        gender = voice_config.get(speaker_id, 'female' if speaker_id % 2 else 'male')
+                
+        voice = voice_config[speaker_id].get('voice', "hi-IN-SwaraNeural")
+        pitch = voice_config[speaker_id].get('pitch', 0)
         
         # Get text and timing information
         text = segment['text']
