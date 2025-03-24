@@ -69,15 +69,73 @@ class SpeakerDiarizer:
             return []
     
     def assign_speakers_to_segments(self, segments, speakers):
-        """Match transcription segments with speaker information"""
+        """
+        Assign speaker labels to transcript segments based on timing overlap
+        
+        Args:
+            segments: List of transcript segments with start/end times
+            speakers: List of speaker segments from diarization
+            
+        Returns:
+            Updated segments with speaker information
+        """
+        # If no speakers found, assign everything to SPEAKER_0
+        if not speakers:
+            for segment in segments:
+                segment["speaker"] = "SPEAKER_0"
+            return segments
+        
+        # For single speaker, optimize by assigning all to same speaker
+        if len(set(s["speaker"] for s in speakers)) == 1:
+            speaker_id = speakers[0]["speaker"]
+            for segment in segments:
+                segment["speaker"] = speaker_id
+            return segments
+        
+        # Process each segment
         for segment in segments:
-            segment_mid = (segment["start"] + segment["end"]) / 2
-            # Find speaker active at this time
+            segment_start = segment.get("start", 0)
+            segment_end = segment.get("end", 0)
+            segment_duration = segment_end - segment_start
+            
+            # Find overlapping speakers
+            speaker_overlaps = []
+            
             for speaker_turn in speakers:
-                if speaker_turn["start"] <= segment_mid <= speaker_turn["end"]:
-                    segment["speaker"] = speaker_turn["speaker"]
-                    break
-                else:
-                    segment["speaker"] = "unknown"
+                # Fast check for any overlap
+                if not (speaker_turn["end"] <= segment_start or speaker_turn["start"] >= segment_end):
+                    # Calculate overlap duration
+                    overlap_start = max(speaker_turn["start"], segment_start)
+                    overlap_end = min(speaker_turn["end"], segment_end)
+                    overlap_duration = overlap_end - overlap_start
+                    
+                    # Calculate overlap percentage relative to segment duration
+                    overlap_percentage = overlap_duration / segment_duration if segment_duration > 0 else 0
+                    
+                    speaker_overlaps.append((speaker_turn["speaker"], overlap_duration, overlap_percentage))
+            
+            # Assign speaker with the most overlap
+            if speaker_overlaps:
+                # Sort by overlap duration (descending)
+                speaker_overlaps.sort(key=lambda x: x[1], reverse=True)
+                segment["speaker"] = speaker_overlaps[0][0]
                 
+                # Add confidence score if desired
+                # segment["speaker_confidence"] = speaker_overlaps[0][2]
+            else:
+                # Find nearest speaker if no overlap
+                segment_mid = (segment_start + segment_end) / 2
+                
+                closest_speaker = min(
+                    speakers,
+                    key=lambda s: min(
+                        abs(s["start"] - segment_mid),
+                        abs(s["end"] - segment_mid)
+                    )
+                )
+                segment["speaker"] = closest_speaker["speaker"]
+                
+                # You can log this if logging is set up
+                # print(f"No speaker overlap found for segment at {segment_start:.2f}s, using nearest speaker")
+        
         return segments
