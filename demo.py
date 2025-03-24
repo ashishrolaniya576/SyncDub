@@ -79,7 +79,10 @@ def main():
         target_lang=target_language,
         translation_method="groq"  # Can be "batch" or "iterative" or "groq"
     )
-    
+    # Print translated segments for debugging
+    print("Translated segments structure:")
+    print(translated_segments[:2])  # Show first 2 segments directly
+    print(f"Total segments: {len(translated_segments)}")
     # Step 6: Configure voice characteristics for speakers
     voice_config = {}  # Map of speaker_id to gender
     
