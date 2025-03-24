@@ -2,7 +2,6 @@ from pyannote.audio import Pipeline
 import torch
 import os
 import time
-import logger
 
 class SpeakerDiarizer:
     def __init__(self, hf_token, device=None):
@@ -58,19 +57,11 @@ class SpeakerDiarizer:
             print("Processing diarization results...")
             speakers = []
             for turn, _, speaker in diarization.itertracks(yield_label=True):
-                speakers.append({
-                    'start': turn.start,
-                    'end': turn.end,
-                    'speaker': speaker
-                })
-            print(speakers)
-
-            # Encode speaker IDs consistently (SPEAKER_00, SPEAKER_01, etc.)
-            speakers = self._reencode_speakers(speakers)
-            print(f"Diarization completed in {time.time() - start_time:.1f}s")
-            print(f"Found {len(set(s['speaker'] for s in speakers))} speakers")
-            logger.info(f"Diarization completed in {time.time() - start_time:.1f}s")
-            logger.info(f"Found {len(set(s['speaker'] for s in speakers))} speakers")
+                speakers.append({'start': turn.start, 'end': turn.end, 'speaker': speaker})
+            
+            duration = time.time() - start_time
+            print(f"Diarization completed in {duration:.1f} seconds")
+            print(f"Detected {len(set(s['speaker'] for s in speakers))} unique speakers")
             
             return speakers
         except Exception as e:
@@ -90,23 +81,3 @@ class SpeakerDiarizer:
                 segment["speaker"] = "unknown"
                 
         return segments
-
-    def _reencode_speakers(self, speakers):
-        """Ensure consistent speaker IDs (SPEAKER_00, SPEAKER_01, etc.)"""
-        if not speakers:
-            return speakers
-            
-        # Get unique speaker IDs
-        unique_speakers = set()
-        for turn in speakers:
-            unique_speakers.add(turn['speaker'])
-        
-        # Create mapping
-        speaker_map = {old_id: f"SPEAKER_{i:02d}" 
-                    for i, old_id in enumerate(sorted(unique_speakers))}
-        
-        # Apply mapping
-        for turn in speakers:
-            turn['speaker'] = speaker_map[turn['speaker']]
-        
-        return speakers
