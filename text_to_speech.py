@@ -226,7 +226,7 @@ def generate_edge_tts(segments, target_language, voice_config=None,output_dir="a
         # Generate the voice
         create_segmented_edge_tts(
             text=text,
-            pitch=0,
+            pitch=pitch,
             voice=voice,
             output_path=output_file,
             target_duration=duration,

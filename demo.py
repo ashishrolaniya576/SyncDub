@@ -85,26 +85,26 @@ def main():
     logger.info(f"Generated subtitle file: {subtitle_file}")
     # Step 6: Configure voice characteristics for speakers
     voice_config = {}  # Map of speaker_id to gender
-    
+
     # Detect number of unique speakers
     unique_speakers = set()
     for segment in translated_segments:
         if 'speaker' in segment:
             unique_speakers.add(segment['speaker'])
+    print(unique_speakers)
+    # if len(unique_speakers) > 1:
+    #     logger.info(f"Detected {len(unique_speakers)} speakers")
+    #     for speaker in sorted(list(unique_speakers)):  
+    #         match = re.search(r'SPEAKER_(\d+)', speaker)
+    #         if match:
+    #             speaker_id = int(match.group(1))
+    #             gender = input(f"Select voice gender for Speaker {speaker_id+1} (m/f): ").lower()
+    #             voice_config[speaker_id] = "female" if gender.startswith("f") else "male"
     
-    if len(unique_speakers) > 1:
-        logger.info(f"Detected {len(unique_speakers)} speakers")
-        for speaker in sorted(list(unique_speakers)):  
-            match = re.search(r'SPEAKER_(\d+)', speaker)
-            if match:
-                speaker_id = int(match.group(1))
-                gender = input(f"Select voice gender for Speaker {speaker_id+1} (m/f): ").lower()
-                voice_config[speaker_id] = "female" if gender.startswith("f") else "male"
     
-    
-    # Step 7: Generate speech in target language
-    logger.info("Generating speech...")
-    generate_edge_tts(translated_segments, target_language, voice_config, output_dir="audio2")
+    # # Step 7: Generate speech in target language
+    # logger.info("Generating speech...")
+    # generate_edge_tts(translated_segments, target_language, voice_config, output_dir="audio2")
     
     
 
