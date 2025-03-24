@@ -310,7 +310,7 @@ def translate_with_groq(segments: List[Dict[str, Any]],
 
 def translate_text(segments: List[Dict[str, Any]],
                   target_lang: str,
-                  translation_method: str = "groq",
+                  translation_method: str = "batch",
                   chunk_size: int = 4000,
                   source_lang: Optional[str] = None,
                   groq_model: str = "llama-3.3-70b-versatile",
