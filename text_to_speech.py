@@ -136,9 +136,9 @@ def configure_voice_characteristics(voice_config):
     male_pitches = [0, -30, 40]  # Default, deeper, higher
     female_pitches = [0, 25, -25]  # Default, higher, deeper
     
-    # Count number of males and females
-    male_count = sum(1 for gender in voice_config.values() if gender == "male")
-    female_count = sum(1 for gender in voice_config.values() if gender == "female")
+    # Handle empty or None voice_config
+    if not voice_config:
+        return {0: {'voice': male_voice, 'pitch': 0}}
     
     # Track current male and female speaker indices
     current_male = 0
@@ -148,11 +148,14 @@ def configure_voice_characteristics(voice_config):
     enhanced_config = {}
     
     for speaker_id, gender in voice_config.items():
+        # Ensure speaker_id is an integer (convert if it's a string)
+        if isinstance(speaker_id, str) and speaker_id.isdigit():
+            speaker_id = int(speaker_id)
+            
         if gender == "male":
             # Assign voice and pitch based on male index
             pitch = male_pitches[current_male % len(male_pitches)]
             enhanced_config[speaker_id] = {
-                'gender': gender,
                 'voice': male_voice,
                 'pitch': pitch
             }
@@ -161,7 +164,6 @@ def configure_voice_characteristics(voice_config):
             # Assign voice and pitch based on female index
             pitch = female_pitches[current_female % len(female_pitches)]
             enhanced_config[speaker_id] = {
-                'gender': gender,
                 'voice': female_voice,
                 'pitch': pitch
             }
@@ -217,7 +219,7 @@ def generate_edge_tts(segments, target_language, voice_config=None,output_dir="a
         # Create output filename
         output_file = f"audio/{start}.wav"
         
-        logger.info(f"Processing segment {i+1} (Speaker {speaker_id}, {gender}):")
+        logger.info(f"Processing segment {i+1} (Speaker {speaker_id}, Voice: {voice}):")
         logger.info(f"  Text: {text[:50]}{'...' if len(text) > 50 else ''}")
         logger.info(f"  Duration: {duration:.2f}s")
         
