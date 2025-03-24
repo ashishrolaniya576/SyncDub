@@ -71,8 +71,6 @@ def main():
     # Step 4: Assign speakers to segments
     logger.info("Assigning speakers to segments...")
     final_segments = diarizer.assign_speakers_to_segments(segments, speakers)
-    for segment in final_segments:
-        print(segment)
     
     # Step 5: Translate the segments
     logger.info(f"Translating to {target_language}...")
@@ -82,35 +80,33 @@ def main():
         translation_method="groq"  # Can be "batch" or "iterative" or "groq"
     )
 
-    for segment in translated_segments:
-        print(segment)
 
     # Print translated segments for debugging
-    # subtitle_file = f"temp/{os.path.basename(video_path).split('.')[0]}_{target_language}.srt"
-    # generate_srt_subtitles(translated_segments, output_file=subtitle_file)
-    # logger.info(f"Generated subtitle file: {subtitle_file}")
-    # # Step 6: Configure voice characteristics for speakers
-    # voice_config = {}  # Map of speaker_id to gender
+    subtitle_file = f"temp/{os.path.basename(video_path).split('.')[0]}_{target_language}.srt"
+    generate_srt_subtitles(translated_segments, output_file=subtitle_file)
+    logger.info(f"Generated subtitle file: {subtitle_file}")
+    # Step 6: Configure voice characteristics for speakers
+    voice_config = {}  # Map of speaker_id to gender
 
-    # # Detect number of unique speakers
-    # unique_speakers = set()
-    # for segment in translated_segments:
-    #     if 'speaker' in segment:
-    #         unique_speakers.add(segment['speaker'])
-    # print(unique_speakers)
-    # if len(unique_speakers) > 1:
-    #     logger.info(f"Detected {len(unique_speakers)} speakers")
-    #     for speaker in sorted(list(unique_speakers)):  
-    #         match = re.search(r'SPEAKER_(\d+)', speaker)
-    #         if match:
-    #             speaker_id = int(match.group(1))
-    #             gender = input(f"Select voice gender for Speaker {speaker_id+1} (m/f): ").lower()
-    #             voice_config[speaker_id] = "female" if gender.startswith("f") else "male"
+    # Detect number of unique speakers
+    unique_speakers = set()
+    for segment in translated_segments:
+        if 'speaker' in segment:
+            unique_speakers.add(segment['speaker'])
+    print(unique_speakers)
+    if len(unique_speakers) > 1:
+        logger.info(f"Detected {len(unique_speakers)} speakers")
+        for speaker in sorted(list(unique_speakers)):  
+            match = re.search(r'SPEAKER_(\d+)', speaker)
+            if match:
+                speaker_id = int(match.group(1))
+                gender = input(f"Select voice gender for Speaker {speaker_id+1} (m/f): ").lower()
+                voice_config[speaker_id] = "female" if gender.startswith("f") else "male"
     
     
     # # Step 7: Generate speech in target language
-    # logger.info("Generating speech...")
-    # generate_edge_tts(translated_segments, target_language, voice_config, output_dir="audio2")
+    logger.info("Generating speech...")
+    generate_edge_tts(translated_segments, target_language, voice_config, output_dir="audio2")
     
     
 
