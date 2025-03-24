@@ -347,3 +347,43 @@ def translate_text(segments: List[Dict[str, Any]],
     else:
         logger.error(f"Unknown translation method: {translation_method}")
         return translate_batch(segments, target_lang, chunk_size, source_lang)
+    
+def generate_srt_subtitles(segments, output_file="output.srt"):
+    """
+    Generate an SRT subtitle file from translated segments.
+    
+    Args:
+        segments: List of dictionaries with 'start', 'end', and 'text' keys
+        output_file: Path to the output SRT file
+        
+    Returns:
+        Path to the created SRT file
+    """
+    logger.info(f"Generating SRT subtitle file: {output_file}")
+    
+    # Format time as HH:MM:SS,mmm
+    def format_time(seconds):
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        seconds = seconds % 60
+        milliseconds = int((seconds - int(seconds)) * 1000)
+        return f"{hours:02d}:{minutes:02d}:{int(seconds):02d},{milliseconds:03d}"
+    
+    with open(output_file, "w", encoding="utf-8") as f:
+        for i, segment in enumerate(segments, 1):
+            # Extract timing information
+            start_time = segment.get("start", 0)
+            end_time = segment.get("end", 0)
+            text = segment.get("text", "").strip()
+            
+            # Skip empty segments
+            if not text:
+                continue
+                
+            # Write subtitle entry
+            f.write(f"{i}\n")
+            f.write(f"{format_time(start_time)} --> {format_time(end_time)}\n")
+            f.write(f"{text}\n\n")
+    
+    logger.info(f"SRT subtitle file created successfully: {output_file}")
+    return output_file

@@ -13,7 +13,7 @@ if current_dir not in sys.path:
 from media_ingestion import MediaIngester
 from speech_recognition import SpeechRecognizer
 from speech_diarization import SpeakerDiarizer
-from translate import translate_text
+from translate import translate_text, generate_srt_subtitles
 from text_to_speech import generate_speech, adjust_speech_timing, apply_voice_effects
 
 def create_directories(dirs):
@@ -80,9 +80,9 @@ def main():
         translation_method="groq"  # Can be "batch" or "iterative" or "groq"
     )
     # Print translated segments for debugging
-    print("Translated segments structure:")
-    print(translated_segments[:2])  # Show first 2 segments directly
-    print(f"Total segments: {len(translated_segments)}")
+    subtitle_file = f"temp/{os.path.basename(video_path).split('.')[0]}_{target_language}.srt"
+    generate_srt_subtitles(translated_segments, output_file=subtitle_file)
+    logger.info(f"Generated subtitle file: {subtitle_file}")
     # Step 6: Configure voice characteristics for speakers
     voice_config = {}  # Map of speaker_id to gender
     
