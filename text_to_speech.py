@@ -85,7 +85,7 @@ def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=N
     
     # Time constraint adjustment
     if target_duration is not None:
-        current_duration = len(modified_audio) / 1000  # ms to seconds
+        current_duration = len(audio) / 1000  # ms to seconds
         
         if abs(current_duration - target_duration) > 0.1:  # 100ms threshold
             speed_factor = current_duration / target_duration
@@ -95,17 +95,17 @@ def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=N
             
             # Apply time adjustment
             if speed_factor > 1:
-                modified_audio = modified_audio.speedup(playback_speed=speed_factor)
+                audio = audio.speedup(playback_speed=speed_factor)
             else:
-                modified_audio = effects.time_stretch(modified_audio, 1/speed_factor)
+                audio = effects.time_stretch(audio, 1/speed_factor)
             
             # Fine-tune if needed
-            new_duration = len(modified_audio) / 1000
+            new_duration = len(audio) / 1000
             if abs(new_duration - target_duration) > 0.1:
-                modified_audio = adjust_audio_duration(modified_audio, target_duration)
+                audio = adjust_audio_duration(audio, target_duration)
     
     # Save the modified audio
-    modified_audio.export(output_path, format="wav")
+    audio.export(output_path, format="wav")
     
     # Clean up temporary file
     os.unlink(temp_file.name)
