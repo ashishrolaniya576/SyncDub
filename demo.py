@@ -71,6 +71,8 @@ def main():
     # Step 4: Assign speakers to segments
     logger.info("Assigning speakers to segments...")
     final_segments = diarizer.assign_speakers_to_segments(segments, speakers)
+    for segment in final_segments:
+        print(segment)
     
     # Step 5: Translate the segments
     logger.info(f"Translating to {target_language}...")
@@ -79,19 +81,23 @@ def main():
         target_lang=target_language,
         translation_method="groq"  # Can be "batch" or "iterative" or "groq"
     )
-    # Print translated segments for debugging
-    subtitle_file = f"temp/{os.path.basename(video_path).split('.')[0]}_{target_language}.srt"
-    generate_srt_subtitles(translated_segments, output_file=subtitle_file)
-    logger.info(f"Generated subtitle file: {subtitle_file}")
-    # Step 6: Configure voice characteristics for speakers
-    voice_config = {}  # Map of speaker_id to gender
 
-    # Detect number of unique speakers
-    unique_speakers = set()
     for segment in translated_segments:
-        if 'speaker' in segment:
-            unique_speakers.add(segment['speaker'])
-    print(unique_speakers)
+        print(segment)
+
+    # Print translated segments for debugging
+    # subtitle_file = f"temp/{os.path.basename(video_path).split('.')[0]}_{target_language}.srt"
+    # generate_srt_subtitles(translated_segments, output_file=subtitle_file)
+    # logger.info(f"Generated subtitle file: {subtitle_file}")
+    # # Step 6: Configure voice characteristics for speakers
+    # voice_config = {}  # Map of speaker_id to gender
+
+    # # Detect number of unique speakers
+    # unique_speakers = set()
+    # for segment in translated_segments:
+    #     if 'speaker' in segment:
+    #         unique_speakers.add(segment['speaker'])
+    # print(unique_speakers)
     # if len(unique_speakers) > 1:
     #     logger.info(f"Detected {len(unique_speakers)} speakers")
     #     for speaker in sorted(list(unique_speakers)):  
