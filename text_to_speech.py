@@ -3,9 +3,10 @@ import os
 import re
 import tempfile
 import logging
-from gtts import gTTS
+import edge_tts
 from pydub import AudioSegment
 from pathlib import Path
+import subprocess
 
 
 # Set up basic logging
@@ -77,30 +78,22 @@ def adjust_audio_duration(audio_segment, target_duration):
     else:
         return audio_segment[:int(target_duration * 1000)]
 
-def create_voice_clone(text, gender, output_path, target_duration=None, language="hi"):
+def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=None):
     """Create voice clone with specific characteristics and timing"""
-    # Create base TTS
-    tts = gTTS(text=text, lang=language, slow=False)
+    # Create a temporary file
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
-    tts.save(temp_file.name)
+    temp_filename = temp_file.name  # Store filename before closing
     temp_file.close()
-    
+    command = [
+        "edge-tts",
+        f"--pitch=+{pitch}Hz",
+        "--voice", voice,
+        "--text", text,
+        "--write-media", temp_filename
+    ]
+    subprocess.run(command, check=True)
     # Load audio
-    audio = AudioSegment.from_file(temp_file.name)
-    
-    # Apply gender-specific voice characteristics
-    if gender.lower() == 'male':
-        # Male voice characteristics
-        modified_audio = audio._spawn(audio.raw_data, overrides={
-            "frame_rate": int(audio.frame_rate * 0.89)
-        }).set_frame_rate(audio.frame_rate)
-        modified_audio = modified_audio.low_pass_filter(2000)
-    else:
-        # Female voice characteristics
-        modified_audio = audio._spawn(audio.raw_data, overrides={
-            "frame_rate": int(audio.frame_rate * 1.12)
-        }).set_frame_rate(audio.frame_rate)
-        modified_audio = modified_audio.high_pass_filter(300)
+    audio = AudioSegment.from_file(temp_filename, format="mp3")
     
     # Time constraint adjustment
     if target_duration is not None:
@@ -136,7 +129,7 @@ def create_voice_clone(text, gender, output_path, target_duration=None, language
     
     return output_path
 
-def generate_speech(segments, target_language, voice_config=None,output_dir="audio2"):
+def generate_edge_tts(segments, target_language, voice_config=None,output_dir="audio2"):
     """
     Generate speech for all segments
     
@@ -187,12 +180,12 @@ def generate_speech(segments, target_language, voice_config=None,output_dir="aud
         logger.info(f"  Duration: {duration:.2f}s")
         
         # Generate the voice
-        create_voice_clone(
+        create_segmented_edge_tts(
             text=text,
-            gender=gender,
+            pitch=0,
+            voice=voice,
             output_path=output_file,
             target_duration=duration,
-            language=target_language
         )
         
         audio_files.append(output_file)
