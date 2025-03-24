@@ -241,6 +241,7 @@ def translate_with_groq(segments: List[Dict[str, Any]],
         3. Each numbered segment should be translated separately
         4. Maintain the original numbering in your response
         5. Translated Segments should be short and concise
+        6. the translated segment should be of similar size as input.
         
         Text to translate:
         {text_segments}
