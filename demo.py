@@ -77,7 +77,7 @@ def main():
     translated_segments = translate_text(
         final_segments, 
         target_lang=target_language,
-        translation_method="groq"  # Can be "batch" or "iterative" or "groq"
+        translation_method="batch"  # Can be "batch" or "iterative" or "groq"
     )
 
 
