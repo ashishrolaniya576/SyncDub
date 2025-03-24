@@ -107,25 +107,7 @@ def main():
     logger.info("Generating speech...")
     generate_speech(translated_segments, target_language, voice_config, output_dir="audio2")
     
-    # # Step 8: Adjust speech timing to match original
-    # logger.info("Adjusting speech timing...")
-    # output_files, speaker_names = adjust_speech_timing(translated_segments, max_speed=2.0)
     
-    # # Optional: Apply voice effects 
-    # use_effects = input("Apply voice effects to make speakers more distinctive? (y/n): ").lower() == 'y'
-    # if use_effects:
-    #     logger.info("Applying voice effects...")
-    #     apply_voice_effects(translated_segments)
-    
-    # Step 9: Final output
-    logger.info("Translation and dubbing completed successfully!")
-    logger.info(f"Processed {len(output_files)} audio segments")
-    logger.info("The dubbed audio segments are in the 'audio2/audio' directory")
-    
-    # Suggest next steps
-    logger.info("\nNext steps:")
-    logger.info("1. You can now merge these audio segments with the original video")
-    logger.info("2. Use a tool like ffmpeg to combine the segments with the video")
 
 if __name__ == "__main__":
     main()
