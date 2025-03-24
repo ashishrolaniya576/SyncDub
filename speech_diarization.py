@@ -2,6 +2,7 @@ from pyannote.audio import Pipeline
 import torch
 import os
 import time
+import logger
 
 class SpeakerDiarizer:
     def __init__(self, hf_token, device=None):
@@ -62,7 +63,8 @@ class SpeakerDiarizer:
                     'end': turn.end,
                     'speaker': speaker
                 })
-            
+            print(speaker)
+
             # Encode speaker IDs consistently (SPEAKER_00, SPEAKER_01, etc.)
             speakers = self._reencode_speakers(speakers)
             print(f"Diarization completed in {time.time() - start_time:.1f}s")
