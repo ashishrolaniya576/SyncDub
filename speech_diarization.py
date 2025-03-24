@@ -77,7 +77,7 @@ class SpeakerDiarizer:
                 if speaker_turn["start"] <= segment_mid <= speaker_turn["end"]:
                     segment["speaker"] = speaker_turn["speaker"]
                     break
-            else:
-                segment["speaker"] = "unknown"
+                else:
+                    segment["speaker"] = "unknown"
                 
         return segments
