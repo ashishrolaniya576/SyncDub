@@ -63,7 +63,7 @@ class SpeakerDiarizer:
                     'end': turn.end,
                     'speaker': speaker
                 })
-            print(speaker)
+            print(speakers)
 
             # Encode speaker IDs consistently (SPEAKER_00, SPEAKER_01, etc.)
             speakers = self._reencode_speakers(speakers)
