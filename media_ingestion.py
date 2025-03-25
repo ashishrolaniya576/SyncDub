@@ -94,7 +94,7 @@ class MediaIngester:
             shutil.copy2(actual_music_path, music_path)
             
             # Clean up if needed
-            # shutil.rmtree(spleeter_output_dir)
+            shutil.rmtree(spleeter_output_dir)
             
             return voice_path, music_path
             
@@ -128,6 +128,8 @@ class MediaIngester:
                 shutil.copy2(actual_voice_path, voice_path)
                 shutil.copy2(actual_music_path, music_path)
                 
+                # Clean up if needed
+                shutil.rmtree(spleeter_output_dir)
                 return voice_path, music_path
 
             except Exception as e2:

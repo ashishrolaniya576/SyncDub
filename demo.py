@@ -15,6 +15,7 @@ from speech_recognition import SpeechRecognizer
 from speech_diarization import SpeakerDiarizer
 from translate import translate_text, generate_srt_subtitles
 from text_to_speech import generate_edge_tts
+from audio_to_video import create_video_with_mixed_audio
 
 def create_directories(dirs):
     """Create necessary directories"""
@@ -53,10 +54,16 @@ def main():
     logger.info("Processing media source...")
     video_path = ingester.process_input(media_source)
     audio_path = ingester.extract_audio(video_path)
+    clean_audio_path, bg_audio_path = ingester.separate_audio_sources(audio_path)
+    logger.info("Extracted audio: %s", audio_path)
+    logger.info("Cleaned audio: %s", clean_audio_path)
+    logger.info("Background audio: %s", bg_audio_path)
+    logger.info("Audio processing completed.")
+
     
     # Step 2: Perform speech recognition
     logger.info("Transcribing audio...")
-    segments = recognizer.transcribe(audio_path)
+    segments = recognizer.transcribe(clean_audio_path)
     
     # Step 3: Perform speaker diarization
     logger.info("Identifying speakers...")
@@ -66,7 +73,7 @@ def main():
     max_speakers = int(max_speakers_str) if max_speakers_str.strip() else None
 
     # Then call diarize with this parameter
-    speakers = diarizer.diarize(audio_path, max_speakers=max_speakers)
+    speakers = diarizer.diarize(clean_audio_path, max_speakers=max_speakers)
     
     # Step 4: Assign speakers to segments
     logger.info("Assigning speakers to segments...")
@@ -106,8 +113,13 @@ def main():
     
     # # Step 7: Generate speech in target language
     logger.info("Generating speech...")
-    generate_edge_tts(translated_segments, target_language, voice_config, output_dir="audio2")
-    
+    dudded_audio_path=generate_edge_tts(translated_segments, target_language, voice_config, output_dir="audio2")
+     
+    # # Step 8: Create video with mixed audio
+    logger.info("Creating video with translated audio...")
+
+    create_video_with_mixed_audio(video_path, bg_audio_path,dudded_audio_path)
+
     
 
 if __name__ == "__main__":
