@@ -3,6 +3,7 @@ import os
 import re
 import tempfile
 import logging
+import torch
 from pydub import AudioSegment
 from pathlib import Path
 import subprocess
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Create directory structure
 def ensure_directories():
     """Ensure the required directories exist"""
-    directories = ["audio", "audio2"]
+    directories = ["audio", "audio2", "reference_audio"]
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
     
@@ -66,8 +67,33 @@ def adjust_audio_duration(audio_segment, target_duration):
     else:
         return audio_segment[:int(target_duration * 1000)]
 
+# XTTS Model Loader (Singleton pattern)
+class XTTSModelLoader:
+    _instance = None
+    model = None
+    
+    @classmethod
+    def get_model(cls):
+        """Get or initialize the XTTS model"""
+        if cls.model is None:
+            try:
+                from TTS.api import TTS
+                
+                # Determine device
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                logger.info(f"Loading XTTS model on {device}...")
+                
+                # Load the model
+                cls.model = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+                logger.info("XTTS model loaded successfully")
+            except Exception as e:
+                logger.error(f"Error loading XTTS model: {e}")
+                return None
+                
+        return cls.model
+
 def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=None):
-    """Create voice clone with specific characteristics and timing"""
+    """Create voice clone with specific characteristics and timing using Edge TTS"""
     # Create a temporary file
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
     temp_filename = temp_file.name  # Store filename before closing
@@ -136,74 +162,175 @@ def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=N
     
     return output_path
 
-def configure_voice_characteristics(voice_config):
+def create_segmented_xtts(text, reference_audio, language, output_path, target_duration=None):
+    """Create voice-cloned speech using XTTS with speaker's reference audio"""
+    # Get the model (will be loaded on first call)
+    tts_model = XTTSModelLoader.get_model()
+    
+    if tts_model is None:
+        raise RuntimeError("XTTS model could not be loaded. Ensure TTS is installed.")
+    
+    # Verify reference audio exists
+    if not os.path.exists(reference_audio):
+        raise FileNotFoundError(f"Reference audio file not found: {reference_audio}")
+    
+    # Generate speech
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+    temp_filename = temp_file.name
+    temp_file.close()
+    
+    logger.info(f"Generating XTTS speech using reference: {os.path.basename(reference_audio)}")
+    tts_model.tts_to_file(
+        text=text,
+        speaker_wav=reference_audio,
+        language=language,
+        file_path=temp_filename
+    )
+    
+    # Load generated audio
+    audio = AudioSegment.from_file(temp_filename)
+    
+    # Apply duration adjustment if needed
+    if target_duration is not None:
+        current_duration = len(audio) / 1000  # ms to seconds
+        
+        if abs(current_duration - target_duration) > 0.1:  # 100ms threshold
+            # Calculate speed factor - inverse of duration ratio
+            speed_factor = current_duration / target_duration
+            speed_factor = min(max(speed_factor, 0.7), 1.5)  # Keep in reasonable range
+            
+            logger.info(f"  Adjusting timing: {current_duration:.2f}s → {target_duration:.2f}s (speed factor: {speed_factor:.2f})")
+            
+            # Remove the temporary file
+            os.unlink(temp_filename)
+            
+            # Regenerate audio with adjusted speed
+            tts_model.tts_to_file(
+                text=text,
+                speaker_wav=reference_audio,
+                language=language,
+                file_path=temp_filename,
+                speed=speed_factor
+            )
+            
+            # Reload the audio
+            audio = AudioSegment.from_file(temp_filename)
+            
+            # Fine tune if needed
+            new_duration = len(audio) / 1000
+            if abs(new_duration - target_duration) > 0.1:
+                audio = adjust_audio_duration(audio, target_duration)
+    
+    # Save the final audio
+    audio.export(output_path, format="wav")
+    
+    # Clean up
+    os.unlink(temp_filename)
+    
+    # Log final duration
+    final_audio = AudioSegment.from_file(output_path)
+    final_duration = len(final_audio) / 1000
+    logger.info(f"  Final duration: {final_duration:.2f}s (target: {target_duration if target_duration else 'None'}s)")
+    
+    return output_path
+
+def process_voice_config(voice_config):
     """
-    Enhances the voice_config by adding specific voice models and pitch values
-    to create distinct voices for each speaker.
+    Process voice configuration to support both Edge TTS and XTTS
     
     Args:
-        voice_config: A dictionary mapping speaker_id to gender ('male' or 'female')
+        voice_config: Dict with speaker_id keys and configuration values
+            For Edge TTS: {'engine': 'edge_tts', 'gender': 'male'/'female'} or simply 'male'/'female'
+            For XTTS: {'engine': 'xtts', 'reference_audio': '/path/to/audio.wav', 'language': 'hi'}
     
     Returns:
-        Enhanced voice_config with voice model and pitch values
+        Processed configuration dictionary
     """
-    # Default voice models for Hindi
-    male_voice = "hi-IN-MadhurNeural"
-    female_voice = "hi-IN-SwaraNeural"
+    processed_config = {}
     
-    # Pitch variations for multiple speakers of same gender
+    # Handle empty config
+    if not voice_config:
+        return {0: {'engine': 'edge_tts', 'voice': "hi-IN-MadhurNeural", 'pitch': 0}}
+    
+    # Track Edge TTS speaker counts for pitch variations
+    edge_male_count = 0
+    edge_female_count = 0
+    
+    # Pitch variations for multiple Edge TTS speakers of same gender
     male_pitches = [0, -30, 40]  # Default, deeper, higher
     female_pitches = [0, 25, -25]  # Default, higher, deeper
     
-    # Handle empty or None voice_config
-    if not voice_config:
-        return {0: {'voice': male_voice, 'pitch': 0}}
-    
-    # Track current male and female speaker indices
-    current_male = 0
-    current_female = 0
-    
-    # Enhanced voice configuration
-    enhanced_config = {}
-    
-    for speaker_id, gender in voice_config.items():
-        # Ensure speaker_id is an integer (convert if it's a string)
+    for speaker_id, config in voice_config.items():
+        # Convert string speaker_id to int if needed
         if isinstance(speaker_id, str) and speaker_id.isdigit():
             speaker_id = int(speaker_id)
-            
-        if gender == "male":
-            # Assign voice and pitch based on male index
-            pitch = male_pitches[current_male % len(male_pitches)]
-            enhanced_config[speaker_id] = {
-                'voice': male_voice,
+        
+        # Determine which engine to use (default is edge_tts)
+        if isinstance(config, dict):
+            engine = config.get('engine', 'edge_tts')
+        else:
+            # Handle simple gender strings for backwards compatibility
+            engine = 'edge_tts'
+            config = {'gender': config} if config in ['male', 'female'] else {'gender': 'male'}
+        
+        if engine == 'xtts':
+            # XTTS configuration - each speaker needs their own reference audio
+            if 'reference_audio' not in config:
+                logger.warning(f"No reference audio provided for XTTS speaker {speaker_id}, falling back to Edge TTS")
+                # Fall back to Edge TTS if no reference audio
+                engine = 'edge_tts'
+                gender = config.get('gender', 'male')
+            else:
+                # Valid XTTS configuration
+                processed_config[speaker_id] = {
+                    'engine': 'xtts',
+                    'reference_audio': config['reference_audio'],
+                    'language': config.get('language', 'hi')  # Default to Hindi
+                }
+                continue  # Skip the Edge TTS processing below
+        
+        # Edge TTS configuration (if engine is edge_tts or XTTS fallback)
+        gender = config.get('gender', 'male')
+        
+        if gender == 'male':
+            # Assign male voice and pitch
+            pitch = male_pitches[edge_male_count % len(male_pitches)]
+            processed_config[speaker_id] = {
+                'engine': 'edge_tts',
+                'voice': "hi-IN-MadhurNeural",
                 'pitch': pitch
             }
-            current_male += 1
-        else:  # female
-            # Assign voice and pitch based on female index
-            pitch = female_pitches[current_female % len(female_pitches)]
-            enhanced_config[speaker_id] = {
-                'voice': female_voice,
+            edge_male_count += 1
+        else:
+            # Assign female voice and pitch
+            pitch = female_pitches[edge_female_count % len(female_pitches)]
+            processed_config[speaker_id] = {
+                'engine': 'edge_tts',
+                'voice': "hi-IN-SwaraNeural", 
                 'pitch': pitch
             }
-            current_female += 1
+            edge_female_count += 1
     
-    return enhanced_config
+    return processed_config
 
-def generate_edge_tts(segments, target_language, voice_config=None,output_dir="audio2"):
+def generate_tts(segments, target_language, voice_config=None, output_dir="audio2"):
     """
-    Generate speech for all segments
+    Generate speech for all segments using appropriate TTS engine per speaker
     
     Args:
         segments: List of segments with text, speaker, start and end times
         target_language: Language code for TTS
-        voice_config: Dictionary mapping speaker IDs to genders ('male'/'female')
+        voice_config: Dictionary with speaker configurations
+                     - For Edge TTS: {'gender': 'male'/'female'} or just 'male'/'female'
+                     - For XTTS: {'engine': 'xtts', 'reference_audio': '/path/to/audio.wav'}
+        output_dir: Directory to save the final audio
         
     Returns:
-        List of created audio files
+        Path to the final combined audio file
     """
     # Ensure output directory exists
-    os.makedirs(f"{output_dir}", exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+    
     # Generate the full audio
     output_path = os.path.join(output_dir, "dubbed_conversation.wav")
     max_end_time = max(segment['end'] for segment in segments)
@@ -213,11 +340,8 @@ def generate_edge_tts(segments, target_language, voice_config=None,output_dir="a
     ensure_directories()
     audio_files = []
     
-    voice_config = configure_voice_characteristics(voice_config)
-
-    # Default voice configuration if none provided
-    if voice_config is None:
-        voice_config = {}
+    # Process voice configuration
+    processed_config = process_voice_config(voice_config or {})
     
     # Process each segment
     for i, segment in enumerate(segments):
@@ -225,9 +349,10 @@ def generate_edge_tts(segments, target_language, voice_config=None,output_dir="a
         speaker = segment.get('speaker', 'SPEAKER_00')
         match = re.search(r'SPEAKER_(\d+)', speaker)
         speaker_id = int(match.group(1)) if match else 0
-                
-        voice = voice_config[speaker_id].get('voice', "hi-IN-SwaraNeural")
-        pitch = voice_config[speaker_id].get('pitch', 0)
+        
+        # Get speaker configuration
+        speaker_config = processed_config.get(speaker_id, 
+                                             {'engine': 'edge_tts', 'voice': "hi-IN-SwaraNeural", 'pitch': 0})
         
         # Get text and timing information
         text = segment['text']
@@ -238,32 +363,54 @@ def generate_edge_tts(segments, target_language, voice_config=None,output_dir="a
         # Create output filename
         output_file = f"audio/{start}.wav"
         
-        logger.info(f"Processing segment {i+1} (Speaker {speaker_id}, Voice: {voice}):")
+        logger.info(f"Processing segment {i+1} (Speaker {speaker_id}, Engine: {speaker_config['engine']}):")
         logger.info(f"  Text: {text[:50]}{'...' if len(text) > 50 else ''}")
         logger.info(f"  Duration: {duration:.2f}s")
         
-        # Generate the voice
-        create_segmented_edge_tts(
-            text=text,
-            pitch=pitch,
-            voice=voice,
-            output_path=output_file,
-            target_duration=duration,
-        )
+        # Choose appropriate TTS engine
+        if speaker_config['engine'] == 'xtts':
+            # XTTS generation with speaker's reference audio
+            try:
+                create_segmented_xtts(
+                    text=text,
+                    reference_audio=speaker_config['reference_audio'],
+                    language=speaker_config.get('language', target_language),
+                    output_path=output_file,
+                    target_duration=duration,
+                )
+            except Exception as e:
+                logger.error(f"Error using XTTS for speaker {speaker_id}: {e}")
+                logger.warning(f"Falling back to Edge TTS for this segment")
+                # Fallback to Edge TTS
+                create_segmented_edge_tts(
+                    text=text,
+                    pitch=0, 
+                    voice="hi-IN-SwaraNeural",
+                    output_path=output_file,
+                    target_duration=duration,
+                )
+        else:
+            # Edge TTS generation
+            create_segmented_edge_tts(
+                text=text,
+                pitch=speaker_config.get('pitch', 0),
+                voice=speaker_config.get('voice', "hi-IN-SwaraNeural"),
+                output_path=output_file,
+                target_duration=duration,
+            )
         
         audio_files.append(output_file)
 
         # Add segment to combined audio at the exact timestamp
         segment_audio = AudioSegment.from_file(output_file)
-        # Position in ms
         position_ms = int(segment['start'] * 1000)
-        # Add to combined audio
         combined = combined.overlay(segment_audio, position=position_ms)
-        # Export the final combined audio
+    
+    # Export the final combined audio
     combined.export(output_path, format="wav")
     logger.info(f"  Final combined duration: {len(combined) / 1000:.2f}s")
     
-        # Clean up segment files
+    # Clean up segment files
     for file in audio_files:
         try:
             os.remove(file)
@@ -282,8 +429,8 @@ def generate_edge_tts(segments, target_language, voice_config=None,output_dir="a
         trimmed = final_audio[:int(max_end_time * 1000)]
         trimmed.export(output_path, format="wav")
         print(f"Trimmed to exactly {max_end_time:.2f} seconds")
-            
-
+    
     return output_path
+
 
 

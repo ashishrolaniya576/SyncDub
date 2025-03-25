@@ -14,7 +14,7 @@ from media_ingestion import MediaIngester
 from speech_recognition import SpeechRecognizer
 from speech_diarization import SpeakerDiarizer
 from translate import translate_text, generate_srt_subtitles
-from text_to_speech import generate_edge_tts
+from text_to_speech import generate_tts  # Import both TTS functions
 from audio_to_video import create_video_with_mixed_audio
 
 def create_directories(dirs):
@@ -31,7 +31,7 @@ def main():
     logger = logging.getLogger(__name__)
     
     # Create necessary directories
-    create_directories(["temp", "audio", "audio2"])
+    create_directories(["temp", "audio", "audio2", "reference_audio"])
     
     # Get API tokens
     hf_token = os.getenv("HUGGINGFACE_TOKEN")
@@ -43,6 +43,13 @@ def main():
     # Get input from user
     media_source = input("Enter video URL or local file path: ")
     target_language = input("Enter target language code (e.g., en, es, fr, de): ")
+    
+    # Choose TTS engine
+    print("\nSelect TTS engine:")
+    print("1. Simple dubbing (Edge TTS)")
+    print("2. Voice cloning (XTTS)")
+    tts_choice = input("Enter choice (1/2): ").strip()
+    use_voice_cloning = tts_choice == "2"
     
     # Initialize components
     logger.info("Initializing pipeline components...")
@@ -59,7 +66,6 @@ def main():
     logger.info("Cleaned audio: %s", clean_audio_path)
     logger.info("Background audio: %s", bg_audio_path)
     logger.info("Audio processing completed.")
-
     
     # Step 2: Perform speech recognition
     logger.info("Transcribing audio...")
@@ -87,40 +93,71 @@ def main():
         translation_method="batch"  # Can be "batch" or "iterative" or "groq"
     )
 
-
     # Print translated segments for debugging
     subtitle_file = f"temp/{os.path.basename(video_path).split('.')[0]}_{target_language}.srt"
     generate_srt_subtitles(translated_segments, output_file=subtitle_file)
     logger.info(f"Generated subtitle file: {subtitle_file}")
+    
     # Step 6: Configure voice characteristics for speakers
-    voice_config = {}  # Map of speaker_id to gender
+    voice_config = {}  # Map of speaker_id to gender or voice config
 
     # Detect number of unique speakers
     unique_speakers = set()
     for segment in translated_segments:
         if 'speaker' in segment:
             unique_speakers.add(segment['speaker'])
-    print(unique_speakers)
-    if len(unique_speakers) > 1:
-        logger.info(f"Detected {len(unique_speakers)} speakers")
-        for speaker in sorted(list(unique_speakers)):  
+    
+    logger.info(f"Detected {len(unique_speakers)} speakers")
+    
+    if use_voice_cloning:
+        # Extract reference audio for voice cloning
+        logger.info("Extracting speaker reference audio for voice cloning...")
+        reference_files = diarizer.extract_speaker_references(
+            clean_audio_path, 
+            speakers, 
+            output_dir="reference_audio"
+        )
+        
+        # Create voice config for XTTS
+        for speaker in sorted(list(unique_speakers)):
             match = re.search(r'SPEAKER_(\d+)', speaker)
             if match:
                 speaker_id = int(match.group(1))
-                gender = input(f"Select voice gender for Speaker {speaker_id+1} (m/f): ").lower()
-                voice_config[speaker_id] = "female" if gender.startswith("f") else "male"
+                if speaker in reference_files:
+                    voice_config[speaker_id] = {
+                        'engine': 'xtts',
+                        'reference_audio': reference_files[speaker],
+                        'language': target_language
+                    }
+                    logger.info(f"Using voice cloning for Speaker {speaker_id+1} with reference file: {os.path.basename(reference_files[speaker])}")
+                else:
+                    # Fallback to Edge TTS if no reference audio
+                    logger.warning(f"No reference audio found for Speaker {speaker_id+1}, falling back to Edge TTS")
+                    gender = input(f"Select voice gender for Speaker {speaker_id+1} (m/f): ").lower()
+                    voice_config[speaker_id] = {
+                        'engine': 'edge_tts',
+                        'gender': "female" if gender.startswith("f") else "male"
+                    }
+    else:
+        # Standard Edge TTS configuration - keeping your current approach
+        if len(unique_speakers) > 0:
+            for speaker in sorted(list(unique_speakers)):
+                match = re.search(r'SPEAKER_(\d+)', speaker)
+                if match:
+                    speaker_id = int(match.group(1))
+                    gender = input(f"Select voice gender for Speaker {speaker_id+1} (m/f): ").lower()
+                    voice_config[speaker_id] = "female" if gender.startswith("f") else "male"
     
-    
-    # # Step 7: Generate speech in target language
+    # Step 7: Generate speech in target language
     logger.info("Generating speech...")
-    dudded_audio_path=generate_edge_tts(translated_segments, target_language, voice_config, output_dir="audio2")
-     
-    # # Step 8: Create video with mixed audio
-    logger.info("Creating video with translated audio...")
-
-    create_video_with_mixed_audio(video_path, bg_audio_path,dudded_audio_path)
-
     
+    dubbed_audio_path = generate_tts(translated_segments, target_language, voice_config, output_dir="audio2")
+
+    # Step 8: Create video with mixed audio
+    logger.info("Creating video with translated audio...")
+    create_video_with_mixed_audio(video_path, bg_audio_path, dubbed_audio_path)
+    
+    logger.info("Process completed successfully!")
 
 if __name__ == "__main__":
     main()

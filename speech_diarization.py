@@ -139,3 +139,85 @@ class SpeakerDiarizer:
                 # print(f"No speaker overlap found for segment at {segment_start:.2f}s, using nearest speaker")
         
         return segments
+    
+    def extract_speaker_references(self, audio_path, speakers, output_dir="reference_audio", min_duration=3.0, max_duration=10.0):
+        """
+        Extract reference audio clips for each unique speaker.
+        
+        Args:
+            audio_path: Path to the original audio file
+            speakers: List of speaker segments from diarization
+            output_dir: Directory to save reference audio clips
+            min_duration: Minimum duration for a reference clip (seconds)
+            max_duration: Maximum duration for a reference clip (seconds)
+            
+        Returns:
+            Dictionary mapping speaker IDs to reference audio file paths
+        """
+        import os
+        from pydub import AudioSegment
+        
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Load the original audio file
+        try:
+            full_audio = AudioSegment.from_file(audio_path)
+        except Exception as e:
+            print(f"Error loading audio file: {e}")
+            return {}
+        
+        # Get unique speaker IDs
+        unique_speakers = set(segment["speaker"] for segment in speakers)
+        reference_files = {}
+        
+        print(f"Extracting reference audio for {len(unique_speakers)} speakers...")
+        
+        for speaker in unique_speakers:
+            # Find all segments for this speaker
+            speaker_segments = [s for s in speakers if s["speaker"] == speaker]
+            
+            # Sort segments by duration (descending)
+            speaker_segments.sort(key=lambda s: s["end"] - s["start"], reverse=True)
+            
+            # Find a segment with suitable duration
+            selected_segment = None
+            for segment in speaker_segments:
+                duration = segment["end"] - segment["start"]
+                if duration >= min_duration:
+                    # If longer than max_duration, trim it
+                    if duration > max_duration:
+                        mid_point = (segment["start"] + segment["end"]) / 2
+                        half_max = max_duration / 2
+                        segment = {
+                            "start": mid_point - half_max,
+                            "end": mid_point + half_max,
+                            "speaker": speaker
+                        }
+                    selected_segment = segment
+                    break
+            
+            # If no segment is long enough, take the longest one
+            if selected_segment is None and speaker_segments:
+                selected_segment = speaker_segments[0]
+                
+            # Extract the audio segment
+            if selected_segment:
+                start_ms = int(selected_segment["start"] * 1000)
+                end_ms = int(selected_segment["end"] * 1000)
+                
+                # Extract audio segment
+                speaker_audio = full_audio[start_ms:end_ms]
+                
+                # Save to file
+                speaker_id = speaker.replace("SPEAKER_", "")
+                output_path = os.path.join(output_dir, f"speaker_{speaker_id}_reference.wav")
+                speaker_audio.export(output_path, format="wav")
+                
+                reference_files[speaker] = output_path
+                
+                print(f"  Extracted {selected_segment['end'] - selected_segment['start']:.2f}s reference audio for {speaker}")
+            else:
+                print(f"  No suitable audio segment found for {speaker}")
+        
+        return reference_files
