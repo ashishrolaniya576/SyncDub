@@ -63,8 +63,8 @@ def main():
     audio_path = ingester.extract_audio(video_path)
     clean_audio_path, bg_audio_path = ingester.separate_audio_sources(audio_path)
     logger.info("Extracted audio: %s", audio_path)
-    # logger.info("Cleaned audio: %s", clean_audio_path)
-    # logger.info("Background audio: %s", bg_audio_path)
+    logger.info("Cleaned audio: %s", clean_audio_path)
+    logger.info("Background audio: %s", bg_audio_path)
     logger.info("Audio processing completed.")
     
     # Step 2: Perform speech recognition
