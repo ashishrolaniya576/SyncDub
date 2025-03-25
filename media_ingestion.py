@@ -51,85 +51,85 @@ class MediaIngester:
     
 
 
-def separate_audio_sources(self, audio_path):
-    """
-    Separate voice and background music from an audio file using Demucs
-    
-    Parameters:
-        audio_path (str): Path to the input audio file
+    def separate_audio_sources(self, audio_path):
+        """
+        Separate voice and background music from an audio file using Demucs
         
-    Returns:
-        tuple: (voice_audio_path, background_music_path)
-    """
-    # Create output directory for separated audio
-    separation_dir = os.path.join(self.output_dir, "separated")
-    os.makedirs(separation_dir, exist_ok=True)
-    
-    # Final output paths
-    voice_path = os.path.join(separation_dir, "voice.wav")
-    music_path = os.path.join(separation_dir, "music.wav")
-    
-    try:
-        # Method 1: Using Demucs as a command-line tool
-        cmd = [
-            "demucs", "--two-stems=vocals",
-            "-o", separation_dir,
-            audio_path
-        ]
+        Parameters:
+            audio_path (str): Path to the input audio file
+            
+        Returns:
+            tuple: (voice_audio_path, background_music_path)
+        """
+        # Create output directory for separated audio
+        separation_dir = os.path.join(self.output_dir, "separated")
+        os.makedirs(separation_dir, exist_ok=True)
         
-        print(f"Separating audio sources from {os.path.basename(audio_path)}...")
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        print("Separation complete.")
+        # Final output paths
+        voice_path = os.path.join(separation_dir, "voice.wav")
+        music_path = os.path.join(separation_dir, "music.wav")
         
-        # Demucs creates a subdirectory with model name and then the base name
-        base_name = os.path.splitext(os.path.basename(audio_path))[0]
-        model_name = "htdemucs"  # default model
-        demucs_output_dir = os.path.join(separation_dir, model_name, base_name)
-        
-        # Get the paths to the separated files
-        actual_voice_path = os.path.join(demucs_output_dir, "vocals.wav") 
-        actual_music_path = os.path.join(demucs_output_dir, "no_vocals.wav")
-        
-        # Move files to their final locations
-        shutil.copy2(actual_voice_path, voice_path)
-        shutil.copy2(actual_music_path, music_path)
-        
-        # Clean up if needed
-        shutil.rmtree(os.path.join(separation_dir, model_name))
-        
-        return voice_path, music_path
-        
-    except Exception as e:
-        print(f"Error during audio separation: {e}")
-        
-        # Method 2: Fall back to Python API
         try:
-            print("Attempting separation using Python API...")
-            import torch
-            from demucs.pretrained import get_model
-            from demucs.apply import apply_model
-            import torchaudio
+            # Method 1: Using Demucs as a command-line tool
+            cmd = [
+                "demucs", "--two-stems=vocals",
+                "-o", separation_dir,
+                audio_path
+            ]
             
-            # Load audio
-            audio, sr = torchaudio.load(audio_path)
+            print(f"Separating audio sources from {os.path.basename(audio_path)}...")
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            print("Separation complete.")
             
-            # Convert to mono if needed
-            if audio.shape[0] > 1:
-                audio = audio.mean(0, keepdim=True)
+            # Demucs creates a subdirectory with model name and then the base name
+            base_name = os.path.splitext(os.path.basename(audio_path))[0]
+            model_name = "htdemucs"  # default model
+            demucs_output_dir = os.path.join(separation_dir, model_name, base_name)
             
-            # Load model
-            model = get_model('htdemucs')
-            model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+            # Get the paths to the separated files
+            actual_voice_path = os.path.join(demucs_output_dir, "vocals.wav") 
+            actual_music_path = os.path.join(demucs_output_dir, "no_vocals.wav")
             
-            # Apply separation
-            sources = apply_model(model, audio, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+            # Move files to their final locations
+            shutil.copy2(actual_voice_path, voice_path)
+            shutil.copy2(actual_music_path, music_path)
             
-            # Sources is a dictionary with keys "vocals" and "no_vocals"
-            torchaudio.save(voice_path, sources[0].cpu(), sr)
-            torchaudio.save(music_path, sources[1].cpu(), sr)
+            # Clean up if needed
+            shutil.rmtree(os.path.join(separation_dir, model_name))
             
             return voice_path, music_path
-        
-        except Exception as e2:
-            print(f"Python API separation also failed: {e2}")
-            return None, None
+            
+        except Exception as e:
+            print(f"Error during audio separation: {e}")
+            
+            # Method 2: Fall back to Python API
+            try:
+                print("Attempting separation using Python API...")
+                import torch
+                from demucs.pretrained import get_model
+                from demucs.apply import apply_model
+                import torchaudio
+                
+                # Load audio
+                audio, sr = torchaudio.load(audio_path)
+                
+                # Convert to mono if needed
+                if audio.shape[0] > 1:
+                    audio = audio.mean(0, keepdim=True)
+                
+                # Load model
+                model = get_model('htdemucs')
+                model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+                
+                # Apply separation
+                sources = apply_model(model, audio, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+                
+                # Sources is a dictionary with keys "vocals" and "no_vocals"
+                torchaudio.save(voice_path, sources[0].cpu(), sr)
+                torchaudio.save(music_path, sources[1].cpu(), sr)
+                
+                return voice_path, music_path
+            
+            except Exception as e2:
+                print(f"Python API separation also failed: {e2}")
+                return None, None
