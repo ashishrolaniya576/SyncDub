@@ -49,89 +49,87 @@ class MediaIngester:
         video.audio.write_audiofile(audio_path)
         return audio_path
     
-    def separate_audio_sources(self, audio_path):
-        """
-        Separate voice and background music from an audio file using Spleeter
+
+
+def separate_audio_sources(self, audio_path):
+    """
+    Separate voice and background music from an audio file using Demucs
+    
+    Parameters:
+        audio_path (str): Path to the input audio file
         
-        Parameters:
-            audio_path (str): Path to the input audio file
-            
-        Returns:
-            tuple: (voice_audio_path, background_music_path)
-        """
-        # Create output directory for separated audio
-        separation_dir = os.path.join(self.output_dir, "separated")
-        os.makedirs(separation_dir, exist_ok=True)
+    Returns:
+        tuple: (voice_audio_path, background_music_path)
+    """
+    # Create output directory for separated audio
+    separation_dir = os.path.join(self.output_dir, "separated")
+    os.makedirs(separation_dir, exist_ok=True)
+    
+    # Final output paths
+    voice_path = os.path.join(separation_dir, "voice.wav")
+    music_path = os.path.join(separation_dir, "music.wav")
+    
+    try:
+        # Method 1: Using Demucs as a command-line tool
+        cmd = [
+            "demucs", "--two-stems=vocals",
+            "-o", separation_dir,
+            audio_path
+        ]
         
-        # Final output paths
-        voice_path = os.path.join(separation_dir, "voice.wav")
-        music_path = os.path.join(separation_dir, "music.wav")
+        print(f"Separating audio sources from {os.path.basename(audio_path)}...")
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        print("Separation complete.")
         
+        # Demucs creates a subdirectory with model name and then the base name
+        base_name = os.path.splitext(os.path.basename(audio_path))[0]
+        model_name = "htdemucs"  # default model
+        demucs_output_dir = os.path.join(separation_dir, model_name, base_name)
+        
+        # Get the paths to the separated files
+        actual_voice_path = os.path.join(demucs_output_dir, "vocals.wav") 
+        actual_music_path = os.path.join(demucs_output_dir, "no_vocals.wav")
+        
+        # Move files to their final locations
+        shutil.copy2(actual_voice_path, voice_path)
+        shutil.copy2(actual_music_path, music_path)
+        
+        # Clean up if needed
+        shutil.rmtree(os.path.join(separation_dir, model_name))
+        
+        return voice_path, music_path
+        
+    except Exception as e:
+        print(f"Error during audio separation: {e}")
+        
+        # Method 2: Fall back to Python API
         try:
-            # Method 1: Using Spleeter as a command-line tool
-            # This is often more reliable than the Python API
-            cmd = [
-                "spleeter", "separate",
-                "-p", "spleeter:2stems", 
-                "-o", separation_dir,
-                audio_path
-            ]
+            print("Attempting separation using Python API...")
+            import torch
+            from demucs.pretrained import get_model
+            from demucs.apply import apply_model
+            import torchaudio
             
-            print(f"Separating audio sources from {os.path.basename(audio_path)}...")
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-            print("Separation complete.")
+            # Load audio
+            audio, sr = torchaudio.load(audio_path)
             
-            # Spleeter creates a subdirectory with the base name of the input file
-            base_name = os.path.splitext(os.path.basename(audio_path))[0]
-            spleeter_output_dir = os.path.join(separation_dir, base_name)
+            # Convert to mono if needed
+            if audio.shape[0] > 1:
+                audio = audio.mean(0, keepdim=True)
             
-            # Get the paths to the separated files
-            actual_voice_path = os.path.join(spleeter_output_dir, "vocals.wav") 
-            actual_music_path = os.path.join(spleeter_output_dir, "accompaniment.wav")
+            # Load model
+            model = get_model('htdemucs')
+            model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
             
-            # Move files to their final locations with more descriptive names
-            shutil.copy2(actual_voice_path, voice_path)
-            shutil.copy2(actual_music_path, music_path)
+            # Apply separation
+            sources = apply_model(model, audio, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
             
-            # Clean up if needed
-            shutil.rmtree(spleeter_output_dir)
+            # Sources is a dictionary with keys "vocals" and "no_vocals"
+            torchaudio.save(voice_path, sources[0].cpu(), sr)
+            torchaudio.save(music_path, sources[1].cpu(), sr)
             
             return voice_path, music_path
-            
-        except Exception as e:
-            print(f"Error during audio separation: {e}")
-            
-            # Method 2: Fall back to Python API if command-line approach fails
-            try:
-                print("Attempting separation using Python API...")
-                from spleeter.separator import Separator
-                
-                # Initialize the separator with the 2stems model
-                separator = Separator('spleeter:2stems')
-                
-                # Perform the separation
-                separator.separate_to_file(
-                    audio_path,
-                    separation_dir,
-                    synchronous=True
-                )
-                
-                # Spleeter creates a subdirectory with the base name of the input file
-                base_name = os.path.splitext(os.path.basename(audio_path))[0]
-                spleeter_output_dir = os.path.join(separation_dir, base_name)
-                
-                # Get the paths to the separated files
-                actual_voice_path = os.path.join(spleeter_output_dir, "vocals.wav") 
-                actual_music_path = os.path.join(spleeter_output_dir, "accompaniment.wav")
-                
-                # Move files to their final locations with more descriptive names
-                shutil.copy2(actual_voice_path, voice_path)
-                shutil.copy2(actual_music_path, music_path)
-                
-                # Clean up if needed
-                shutil.rmtree(spleeter_output_dir)
-                return voice_path, music_path
-
-            except Exception as e2:
-                print(f"Python API separation also failed: {e2}")
-                return None, None
+        
+        except Exception as e2:
+            print(f"Python API separation also failed: {e2}")
+            return None, None
