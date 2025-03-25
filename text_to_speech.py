@@ -342,6 +342,7 @@ def generate_tts(segments, target_language, voice_config=None, output_dir="audio
     
     # Process voice configuration
     processed_config = process_voice_config(voice_config or {})
+    print(processed_config)
     
     # Process each segment
     for i, segment in enumerate(segments):
