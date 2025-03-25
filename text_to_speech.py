@@ -170,6 +170,8 @@ def create_segmented_xtts(text, reference_audio, language, output_path, target_d
     if tts_model is None:
         raise RuntimeError("XTTS model could not be loaded. Ensure TTS is installed.")
     
+    print(reference_audio)
+
     # Verify reference audio exists
     if not os.path.exists(reference_audio):
         raise FileNotFoundError(f"Reference audio file not found: {reference_audio}")
