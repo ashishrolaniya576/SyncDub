@@ -170,10 +170,11 @@ def smooth_speed_change(audio_path, target_duration):
             print(f"[DEBUG] Segment length: {segment_length} samples ({segment_length/sr:.3f}s)")
             
             # Create gradually changing stretch factors - use exponential curve for extreme cases
+            # Make sure np is available regardless of which branch we take
+            # Base curve on exponential growth for smoother extreme adjustments
+            x = np.linspace(0, 1, num_segments)
+            
             if extreme_adjustment:
-                # Base curve on exponential growth for smoother extreme adjustments
-                import numpy as np
-                x = np.linspace(0, 1, num_segments)
                 # Exponential curve that starts slower and accelerates
                 curve = np.exp(x * 2) - 1  # exponential curve normalized
                 curve = curve / curve[-1]  # normalize to 0-1 range
