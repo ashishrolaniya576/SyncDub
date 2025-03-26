@@ -126,12 +126,27 @@ def smooth_speed_change(audio_path, target_duration):
             print(f"[DEBUG] Speed factor {speed_factor:.3f} is within 5% threshold, skipping adjustment")
             return audio_path
         
+        # Dynamic speed factor limits based on audio duration
+        # Allow more aggressive speed factors for short audio
+        if current_duration < 10.0:  # Short audio under 10 seconds
+            max_speed = 3.0  # More aggressive for short segments
+        else:
+            max_speed = 2.0  # Standard limit for longer audio
+            
+        min_speed = 0.5  # Allow more slowdown when needed
+        
         # Limit speed factor to reasonable range
         original_speed_factor = speed_factor
-        speed_factor = min(max(speed_factor, 0.7), 2.0)
+        speed_factor = min(max(speed_factor, min_speed), max_speed)
         
         if original_speed_factor != speed_factor:
             print(f"[DEBUG] Speed factor clamped from {original_speed_factor:.3f} to {speed_factor:.3f}")
+        
+        # Check if extreme speed change is needed (target is much shorter than source)
+        extreme_adjustment = (original_speed_factor > max_speed * 1.5)
+        if extreme_adjustment:
+            print(f"[DEBUG] Extreme adjustment needed (factor {original_speed_factor:.2f})")
+            print(f"[DEBUG] Will apply maximum speed ({max_speed}x) and then trim")
         
         # Track processing time
         import time
@@ -140,20 +155,33 @@ def smooth_speed_change(audio_path, target_duration):
         print(f"[DEBUG] Processing with speed factor: {speed_factor:.3f}")
         
         # For small adjustments, use simple time stretching
-        if abs(speed_factor - 1) < 0.3:
+        if abs(speed_factor - 1) < 0.3 and not extreme_adjustment:
             print(f"[DEBUG] Using simple time stretching (speed factor < 0.3 from 1.0)")
             stretched_audio = librosa.effects.time_stretch(y=y, rate=speed_factor)
             method = "simple"
         else:
-            # For larger adjustments, use segmented approach for smoother transitions
-            num_segments = min(int(len(y) / sr / 0.1), 100)  # Max 100 segments
+            # For larger adjustments or extreme cases, use segmented approach
+            # Adjust number of segments based on audio length
+            segment_duration = 0.075  # 75ms segments for better quality
+            num_segments = min(max(int(len(y) / sr / segment_duration), 20), 200)
             segment_length = len(y) // num_segments
             
             print(f"[DEBUG] Using segmented approach with {num_segments} segments")
             print(f"[DEBUG] Segment length: {segment_length} samples ({segment_length/sr:.3f}s)")
             
-            # Create gradually changing stretch factors
-            stretch_factors = np.linspace(1.0, speed_factor, num_segments)
+            # Create gradually changing stretch factors - use exponential curve for extreme cases
+            if extreme_adjustment:
+                # Base curve on exponential growth for smoother extreme adjustments
+                import numpy as np
+                x = np.linspace(0, 1, num_segments)
+                # Exponential curve that starts slower and accelerates
+                curve = np.exp(x * 2) - 1  # exponential curve normalized
+                curve = curve / curve[-1]  # normalize to 0-1 range
+                stretch_factors = 1.0 + curve * (speed_factor - 1.0)
+            else:
+                # Linear interpolation for normal cases
+                stretch_factors = np.linspace(1.0, speed_factor, num_segments)
+                
             stretched_audio = []
             
             # Process segments with progress reporting
@@ -168,7 +196,7 @@ def smooth_speed_change(audio_path, target_duration):
             
             # Combine segments
             stretched_audio = np.concatenate(stretched_audio)
-            method = "segmented"
+            method = "segmented" + ("-extreme" if extreme_adjustment else "")
         
         # Calculate new duration
         expected_duration = len(stretched_audio) / sr
@@ -183,6 +211,30 @@ def smooth_speed_change(audio_path, target_duration):
         # Verify the actual duration after processing
         y_check, sr_check = librosa.load(temp_file.name, sr=None)
         actual_duration = librosa.get_duration(y=y_check, sr=sr_check)
+        
+        # For extreme cases, perform additional trimming directly with librosa
+        if extreme_adjustment and actual_duration > target_duration:
+            print(f"[DEBUG] Performing additional trim for extreme case")
+            # Calculate how many samples to keep
+            samples_to_keep = int(target_duration * sr_check)
+            
+            # Apply a small fade out to avoid clicks
+            fade_samples = min(int(0.1 * sr_check), samples_to_keep // 4)  # 100ms fade or less
+            
+            # Keep only the needed samples
+            trimmed_audio = y_check[:samples_to_keep]
+            
+            # Apply fade out to avoid clicks
+            if fade_samples > 0:
+                fade_env = np.linspace(1.0, 0.0, fade_samples)
+                trimmed_audio[-fade_samples:] *= fade_env
+            
+            # Save the trimmed version
+            sf.write(temp_file.name, trimmed_audio, sr_check)
+            
+            # Update actual duration
+            actual_duration = librosa.get_duration(y=trimmed_audio, sr=sr_check)
+            method += "+trim"
         
         print(f"[DEBUG] Method used: {method}")
         print(f"[DEBUG] Processing completed in {process_time:.2f} seconds")
