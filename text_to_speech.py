@@ -266,7 +266,7 @@ def create_segmented_xtts(text, reference_audio, language, output_path, target_d
             logger.info(f"  Adjusting timing: {current_duration:.2f}s → {target_duration:.2f}s (speed factor: {speed_factor:.2f})")
             
             # Try smooth speed adjustment first when adjustment is within reasonable range
-            if 0.7 <= speed_factor <= 1.3:
+            if 0.3 <= speed_factor <= 2.0:
                 try:
                     logger.info("  Applying smooth speed adjustment...")
                     adjusted_path = smooth_speed_change(temp_filename, target_duration)
