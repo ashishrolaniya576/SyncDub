@@ -106,6 +106,11 @@ def smooth_speed_change(audio_path, target_duration):
         Path to adjusted audio file (temporary file)
     """
     try:
+        # Debug start
+        print(f"\n[DEBUG] Starting smooth_speed_change:")
+        print(f"[DEBUG] Input file: {audio_path}")
+        print(f"[DEBUG] Target duration: {target_duration:.2f}s")
+        
         # Load audio with librosa
         y, sr = librosa.load(audio_path, sr=None)
         
@@ -113,41 +118,86 @@ def smooth_speed_change(audio_path, target_duration):
         current_duration = librosa.get_duration(y=y, sr=sr)
         speed_factor = current_duration / target_duration
         
+        print(f"[DEBUG] Current duration: {current_duration:.2f}s")
+        print(f"[DEBUG] Calculated speed factor: {speed_factor:.3f}")
+        
         # If the difference is minimal, return original path
         if abs(speed_factor - 1) < 0.05:
+            print(f"[DEBUG] Speed factor {speed_factor:.3f} is within 5% threshold, skipping adjustment")
             return audio_path
         
         # Limit speed factor to reasonable range
-        speed_factor = min(max(speed_factor, 0.7), 2)
+        original_speed_factor = speed_factor
+        speed_factor = min(max(speed_factor, 0.7), 2.0)
+        
+        if original_speed_factor != speed_factor:
+            print(f"[DEBUG] Speed factor clamped from {original_speed_factor:.3f} to {speed_factor:.3f}")
+        
+        # Track processing time
+        import time
+        start_time = time.time()
+        
+        print(f"[DEBUG] Processing with speed factor: {speed_factor:.3f}")
         
         # For small adjustments, use simple time stretching
         if abs(speed_factor - 1) < 0.3:
-            stretched_audio = librosa.effects.time_stretch(y, rate=speed_factor)
+            print(f"[DEBUG] Using simple time stretching (speed factor < 0.3 from 1.0)")
+            stretched_audio = librosa.effects.time_stretch(y=y, rate=speed_factor)
+            method = "simple"
         else:
             # For larger adjustments, use segmented approach for smoother transitions
             num_segments = min(int(len(y) / sr / 0.1), 100)  # Max 100 segments
             segment_length = len(y) // num_segments
             
+            print(f"[DEBUG] Using segmented approach with {num_segments} segments")
+            print(f"[DEBUG] Segment length: {segment_length} samples ({segment_length/sr:.3f}s)")
+            
             # Create gradually changing stretch factors
             stretch_factors = np.linspace(1.0, speed_factor, num_segments)
             stretched_audio = []
             
+            # Process segments with progress reporting
             for i, factor in enumerate(stretch_factors):
-                start = i * segment_length
-                end = start + segment_length if i < num_segments - 1 else len(y)
-                chunk = librosa.effects.time_stretch(y[start:end], rate=factor)
+                if i % 25 == 0 or i == num_segments - 1:
+                    print(f"[DEBUG] Processing segment {i+1}/{num_segments} with stretch factor {factor:.3f}")
+                
+                start_idx = i * segment_length
+                end_idx = start_idx + segment_length if i < num_segments - 1 else len(y)
+                chunk = librosa.effects.time_stretch(y=y[start_idx:end_idx], rate=factor)
                 stretched_audio.append(chunk)
             
             # Combine segments
             stretched_audio = np.concatenate(stretched_audio)
+            method = "segmented"
+        
+        # Calculate new duration
+        expected_duration = len(stretched_audio) / sr
         
         # Save to temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
         sf.write(temp_file.name, stretched_audio, sr)
         
+        # Calculate processing time
+        process_time = time.time() - start_time
+        
+        # Verify the actual duration after processing
+        y_check, sr_check = librosa.load(temp_file.name, sr=None)
+        actual_duration = librosa.get_duration(y=y_check, sr=sr_check)
+        
+        print(f"[DEBUG] Method used: {method}")
+        print(f"[DEBUG] Processing completed in {process_time:.2f} seconds")
+        print(f"[DEBUG] Expected new duration: {expected_duration:.2f}s")
+        print(f"[DEBUG] Actual new duration: {actual_duration:.2f}s")
+        print(f"[DEBUG] Target was: {target_duration:.2f}s")
+        print(f"[DEBUG] Difference from target: {abs(actual_duration - target_duration):.3f}s")
+        print(f"[DEBUG] Output file: {temp_file.name}")
+        
         return temp_file.name
         
     except Exception as e:
+        import traceback
+        print(f"[DEBUG ERROR] Smooth speed adjustment failed: {e}")
+        print(traceback.format_exc())
         logger.warning(f"Smooth speed adjustment failed: {e}")
         return audio_path
 
@@ -261,72 +311,40 @@ def create_segmented_xtts(text, reference_audio, language, output_path, target_d
         if abs(current_duration - target_duration) > 0.1:  # 100ms threshold
             # Calculate speed factor - inverse of duration ratio
             speed_factor = current_duration / target_duration
-            speed_factor = min(max(speed_factor, 0.7), 1.5)  # Keep in reasonable range
+            speed_factor = min(max(speed_factor, 0.7), 2.0)  # Allow wider range for better adjustment
             
             logger.info(f"  Adjusting timing: {current_duration:.2f}s → {target_duration:.2f}s (speed factor: {speed_factor:.2f})")
             
-            # Try smooth speed adjustment first when adjustment is within reasonable range
-            if 0.3 <= speed_factor <= 2.0:
-                try:
-                    logger.info("  Applying smooth speed adjustment...")
-                    adjusted_path = smooth_speed_change(temp_filename, target_duration)
+            try:
+                # Always attempt smooth speed change since regeneration doesn't work
+                logger.info("  Applying smooth speed adjustment...")
+                adjusted_path = smooth_speed_change(temp_filename, target_duration)
+                
+                if adjusted_path != temp_filename:  # If path is different, adjustment was done
+                    # Load the adjusted audio
+                    audio = AudioSegment.from_file(adjusted_path)
                     
-                    if adjusted_path != temp_filename:  # If path is different, adjustment was done
-                        # Load the adjusted audio
-                        audio = AudioSegment.from_file(adjusted_path)
+                    # Check if adjustment was successful
+                    new_duration = len(audio) / 1000
+                    if abs(new_duration - target_duration) <= 0.15:  # 150ms tolerance
+                        logger.info(f"  Smooth adjustment successful: {new_duration:.2f}s")
                         
-                        # Check if adjustment was successful
-                        new_duration = len(audio) / 1000
-                        if abs(new_duration - target_duration) <= 0.15:  # 150ms tolerance
-                            logger.info(f"  Smooth adjustment successful: {new_duration:.2f}s")
-                            
-                            # Clean up original file and use the adjusted one
-                            os.unlink(temp_filename)
-                            temp_filename = adjusted_path
-                        else:
-                            # Clean up adjusted file and fall back to regeneration
-                            logger.info(f"  Smooth adjustment not precise enough ({new_duration:.2f}s), falling back to regeneration")
-                            os.unlink(adjusted_path)
-                            raise Exception("Smooth adjustment not precise enough")
-                except Exception as e:
-                    logger.info(f"  Smooth speed adjustment failed ({str(e)}), falling back to regeneration")
-                    
-                    # Fall back to regeneration approach
-                    # Remove the temporary file
-                    if os.path.exists(temp_filename):
+                        # Clean up original file and use the adjusted one
                         os.unlink(temp_filename)
-                    
-                    # Regenerate audio with adjusted speed parameter
-                    tts_model.tts_to_file(
-                        text=text,
-                        speaker_wav=reference_audio,
-                        language=language,
-                        file_path=temp_filename,
-                        speed=speed_factor
-                    )
-                    
-                    # Reload the audio
-                    audio = AudioSegment.from_file(temp_filename)
-            else:
-                # Use regeneration for larger adjustments
-                # Remove the temporary file
-                os.unlink(temp_filename)
-                
-                # Regenerate audio with adjusted speed
-                tts_model.tts_to_file(
-                    text=text,
-                    speaker_wav=reference_audio,
-                    language=language,
-                    file_path=temp_filename,
-                    speed=speed_factor
-                )
-                
-                # Reload the audio
-                audio = AudioSegment.from_file(temp_filename)
+                        temp_filename = adjusted_path
+                    else:
+                        # Clean up adjusted file and just use duration adjustment
+                        logger.info(f"  Smooth adjustment not precise enough ({new_duration:.2f}s), will fine-tune with duration adjustment")
+                        os.unlink(adjusted_path)
+                        # We'll fall through to the final duration adjustment step
+            except Exception as e:
+                logger.warning(f"  Smooth speed adjustment failed: {str(e)}")
+                # We'll fall through to the final duration adjustment step
             
-            # Fine tune if needed
+            # Always perform final duration adjustment to ensure exact timing
             new_duration = len(audio) / 1000
             if abs(new_duration - target_duration) > 0.1:
+                logger.info(f"  Fine-tuning with duration adjustment: {new_duration:.2f}s → {target_duration:.2f}s")
                 audio = adjust_audio_duration(audio, target_duration)
     
     # Save the final audio
