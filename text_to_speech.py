@@ -7,6 +7,8 @@ import torch
 from pydub import AudioSegment
 from pathlib import Path
 import subprocess
+import librosa
+import soundfile as sf
 
 
 # Set up basic logging
@@ -91,6 +93,63 @@ class XTTSModelLoader:
                 return None
                 
         return cls.model
+
+def smooth_speed_change(audio_path, target_duration):
+    """
+    Adjust audio speed with smooth transitions to match target duration
+    
+    Args:
+        audio_path: Path to audio file to adjust
+        target_duration: Target duration in seconds
+        
+    Returns:
+        Path to adjusted audio file (temporary file)
+    """
+    try:
+        # Load audio with librosa
+        y, sr = librosa.load(audio_path, sr=None)
+        
+        # Calculate current duration and speed factor
+        current_duration = librosa.get_duration(y=y, sr=sr)
+        speed_factor = current_duration / target_duration
+        
+        # If the difference is minimal, return original path
+        if abs(speed_factor - 1) < 0.05:
+            return audio_path
+        
+        # Limit speed factor to reasonable range
+        speed_factor = min(max(speed_factor, 0.7), 1.5)
+        
+        # For small adjustments, use simple time stretching
+        if abs(speed_factor - 1) < 0.3:
+            stretched_audio = librosa.effects.time_stretch(y, rate=speed_factor)
+        else:
+            # For larger adjustments, use segmented approach for smoother transitions
+            num_segments = min(int(len(y) / sr / 0.1), 100)  # Max 100 segments
+            segment_length = len(y) // num_segments
+            
+            # Create gradually changing stretch factors
+            stretch_factors = np.linspace(1.0, speed_factor, num_segments)
+            stretched_audio = []
+            
+            for i, factor in enumerate(stretch_factors):
+                start = i * segment_length
+                end = start + segment_length if i < num_segments - 1 else len(y)
+                chunk = librosa.effects.time_stretch(y[start:end], rate=factor)
+                stretched_audio.append(chunk)
+            
+            # Combine segments
+            stretched_audio = np.concatenate(stretched_audio)
+        
+        # Save to temporary file
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+        sf.write(temp_file.name, stretched_audio, sr)
+        
+        return temp_file.name
+        
+    except Exception as e:
+        logger.warning(f"Smooth speed adjustment failed: {e}")
+        return audio_path
 
 def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=None):
     """Create voice clone with specific characteristics and timing using Edge TTS"""
@@ -206,20 +265,64 @@ def create_segmented_xtts(text, reference_audio, language, output_path, target_d
             
             logger.info(f"  Adjusting timing: {current_duration:.2f}s → {target_duration:.2f}s (speed factor: {speed_factor:.2f})")
             
-            # Remove the temporary file
-            os.unlink(temp_filename)
-            
-            # Regenerate audio with adjusted speed
-            tts_model.tts_to_file(
-                text=text,
-                speaker_wav=reference_audio,
-                language=language,
-                file_path=temp_filename,
-                speed=speed_factor
-            )
-            
-            # Reload the audio
-            audio = AudioSegment.from_file(temp_filename)
+            # Try smooth speed adjustment first when adjustment is within reasonable range
+            if 0.7 <= speed_factor <= 1.3:
+                try:
+                    logger.info("  Applying smooth speed adjustment...")
+                    adjusted_path = smooth_speed_change(temp_filename, target_duration)
+                    
+                    if adjusted_path != temp_filename:  # If path is different, adjustment was done
+                        # Load the adjusted audio
+                        audio = AudioSegment.from_file(adjusted_path)
+                        
+                        # Check if adjustment was successful
+                        new_duration = len(audio) / 1000
+                        if abs(new_duration - target_duration) <= 0.15:  # 150ms tolerance
+                            logger.info(f"  Smooth adjustment successful: {new_duration:.2f}s")
+                            
+                            # Clean up original file and use the adjusted one
+                            os.unlink(temp_filename)
+                            temp_filename = adjusted_path
+                        else:
+                            # Clean up adjusted file and fall back to regeneration
+                            logger.info(f"  Smooth adjustment not precise enough ({new_duration:.2f}s), falling back to regeneration")
+                            os.unlink(adjusted_path)
+                            raise Exception("Smooth adjustment not precise enough")
+                except Exception as e:
+                    logger.info(f"  Smooth speed adjustment failed ({str(e)}), falling back to regeneration")
+                    
+                    # Fall back to regeneration approach
+                    # Remove the temporary file
+                    if os.path.exists(temp_filename):
+                        os.unlink(temp_filename)
+                    
+                    # Regenerate audio with adjusted speed parameter
+                    tts_model.tts_to_file(
+                        text=text,
+                        speaker_wav=reference_audio,
+                        language=language,
+                        file_path=temp_filename,
+                        speed=speed_factor
+                    )
+                    
+                    # Reload the audio
+                    audio = AudioSegment.from_file(temp_filename)
+            else:
+                # Use regeneration for larger adjustments
+                # Remove the temporary file
+                os.unlink(temp_filename)
+                
+                # Regenerate audio with adjusted speed
+                tts_model.tts_to_file(
+                    text=text,
+                    speaker_wav=reference_audio,
+                    language=language,
+                    file_path=temp_filename,
+                    speed=speed_factor
+                )
+                
+                # Reload the audio
+                audio = AudioSegment.from_file(temp_filename)
             
             # Fine tune if needed
             new_duration = len(audio) / 1000
@@ -437,6 +540,4 @@ def generate_tts(segments, target_language, voice_config=None, output_dir="audio
         print(f"Trimmed to exactly {max_end_time:.2f} seconds")
     
     return output_path
-
-
 
