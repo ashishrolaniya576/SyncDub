@@ -96,7 +96,7 @@ class XTTSModelLoader:
 
 def smooth_speed_change(audio_path, target_duration):
     """
-    Adjust audio speed with smooth transitions to match target duration
+    Adjust audio speed with instantaneous time stretching to match target duration
     
     Args:
         audio_path: Path to audio file to adjust
@@ -107,7 +107,7 @@ def smooth_speed_change(audio_path, target_duration):
     """
     try:
         # Debug start
-        print(f"\n[DEBUG] Starting smooth_speed_change:")
+        print(f"\n[DEBUG] Starting audio speed adjustment:")
         print(f"[DEBUG] Input file: {audio_path}")
         print(f"[DEBUG] Target duration: {target_duration:.2f}s")
         
@@ -135,69 +135,25 @@ def smooth_speed_change(audio_path, target_duration):
             
         min_speed = 0.5  # Allow more slowdown when needed
         
+        # Check if extreme speed change is needed
+        extreme_adjustment = (speed_factor > max_speed)
+        
         # Limit speed factor to reasonable range
         original_speed_factor = speed_factor
         speed_factor = min(max(speed_factor, min_speed), max_speed)
         
         if original_speed_factor != speed_factor:
             print(f"[DEBUG] Speed factor clamped from {original_speed_factor:.3f} to {speed_factor:.3f}")
-        
-        # Check if extreme speed change is needed (target is much shorter than source)
-        extreme_adjustment = (original_speed_factor > max_speed * 1.5)
-        if extreme_adjustment:
-            print(f"[DEBUG] Extreme adjustment needed (factor {original_speed_factor:.2f})")
-            print(f"[DEBUG] Will apply maximum speed ({max_speed}x) and then trim")
+            if extreme_adjustment:
+                print(f"[DEBUG] Extreme adjustment needed - will apply max speed and then trim")
         
         # Track processing time
         import time
         start_time = time.time()
         
-        print(f"[DEBUG] Processing with speed factor: {speed_factor:.3f}")
-        
-        # For small adjustments, use simple time stretching
-        if abs(speed_factor - 1) < 0.3 and not extreme_adjustment:
-            print(f"[DEBUG] Using simple time stretching (speed factor < 0.3 from 1.0)")
-            stretched_audio = librosa.effects.time_stretch(y=y, rate=speed_factor)
-            method = "simple"
-        else:
-            # For larger adjustments or extreme cases, use segmented approach
-            # Adjust number of segments based on audio length
-            segment_duration = 0.075  # 75ms segments for better quality
-            num_segments = min(max(int(len(y) / sr / segment_duration), 20), 200)
-            segment_length = len(y) // num_segments
-            
-            print(f"[DEBUG] Using segmented approach with {num_segments} segments")
-            print(f"[DEBUG] Segment length: {segment_length} samples ({segment_length/sr:.3f}s)")
-            
-            # Create gradually changing stretch factors - use exponential curve for extreme cases
-            # Make sure np is available regardless of which branch we take
-            # Base curve on exponential growth for smoother extreme adjustments
-            x = np.linspace(0, 1, num_segments)
-            
-            if extreme_adjustment:
-                # Exponential curve that starts slower and accelerates
-                curve = np.exp(x * 2) - 1  # exponential curve normalized
-                curve = curve / curve[-1]  # normalize to 0-1 range
-                stretch_factors = 1.0 + curve * (speed_factor - 1.0)
-            else:
-                # Linear interpolation for normal cases
-                stretch_factors = np.linspace(1.0, speed_factor, num_segments)
-                
-            stretched_audio = []
-            
-            # Process segments with progress reporting
-            for i, factor in enumerate(stretch_factors):
-                if i % 25 == 0 or i == num_segments - 1:
-                    print(f"[DEBUG] Processing segment {i+1}/{num_segments} with stretch factor {factor:.3f}")
-                
-                start_idx = i * segment_length
-                end_idx = start_idx + segment_length if i < num_segments - 1 else len(y)
-                chunk = librosa.effects.time_stretch(y=y[start_idx:end_idx], rate=factor)
-                stretched_audio.append(chunk)
-            
-            # Combine segments
-            stretched_audio = np.concatenate(stretched_audio)
-            method = "segmented" + ("-extreme" if extreme_adjustment else "")
+        # SIMPLIFIED: Apply direct time stretching to the entire audio at once
+        print(f"[DEBUG] Applying instantaneous time stretching with factor {speed_factor:.3f}")
+        stretched_audio = librosa.effects.time_stretch(y=y, rate=speed_factor)
         
         # Calculate new duration
         expected_duration = len(stretched_audio) / sr
@@ -213,7 +169,9 @@ def smooth_speed_change(audio_path, target_duration):
         y_check, sr_check = librosa.load(temp_file.name, sr=None)
         actual_duration = librosa.get_duration(y=y_check, sr=sr_check)
         
-        # For extreme cases, perform additional trimming directly with librosa
+        method = "direct"
+        
+        # For extreme cases, perform additional trimming
         if extreme_adjustment and actual_duration > target_duration:
             print(f"[DEBUG] Performing additional trim for extreme case")
             # Calculate how many samples to keep
@@ -249,9 +207,9 @@ def smooth_speed_change(audio_path, target_duration):
         
     except Exception as e:
         import traceback
-        print(f"[DEBUG ERROR] Smooth speed adjustment failed: {e}")
+        print(f"[DEBUG ERROR] Audio speed adjustment failed: {e}")
         print(traceback.format_exc())
-        logger.warning(f"Smooth speed adjustment failed: {e}")
+        logger.warning(f"Audio speed adjustment failed: {e}")
         return audio_path
 
 def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=None):
