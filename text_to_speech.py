@@ -7,6 +7,8 @@ import torch
 from pydub import AudioSegment
 from pathlib import Path
 import subprocess
+import librosa
+import soundfile as sf
 
 
 # Set up basic logging
@@ -123,29 +125,68 @@ def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=N
             
             logger.info(f"  Adjusting timing: {current_duration:.2f}s → {target_duration:.2f}s (factor: {speed_factor:.2f})")
             
-            # Apply time adjustment
-            # Instead of speed adjustments after generation, use Edge TTS rate parameter
-            if speed_factor < 1:
-                rate_adjustment = f"-{int((1 - speed_factor) * 100)}%"
+            # Try smooth speed adjustment first when the adjustment is within reasonable range
+            if 0.7 <= speed_factor <= 1.3:
+                try:
+                    logger.info("  Applying smooth speed adjustment...")
+                    audio = smooth_speed_change(temp_filename, target_duration)
+                    
+                    # Check if we achieved target duration
+                    new_duration = len(audio) / 1000
+                    if abs(new_duration - target_duration) <= 0.1:
+                        logger.info(f"  Speed adjustment successful: {new_duration:.2f}s")
+                    else:
+                        logger.info(f"  Speed adjustment not precise enough ({new_duration:.2f}s), falling back to regeneration")
+                        raise Exception("Smooth adjustment not precise enough")
+                        
+                except Exception as e:
+                    logger.info(f"  Smooth speed adjustment failed ({str(e)}), falling back to Edge TTS rate parameter")
+                    
+                    # Fall back to Edge TTS rate parameter approach
+                    if speed_factor < 1:
+                        rate_adjustment = f"-{int((1 - speed_factor) * 100)}%"
+                    else:
+                        rate_adjustment = f"+{int((speed_factor - 1) * 100)}%"
+                    
+                    # Regenerate with adjusted rate
+                    os.unlink(temp_file.name)  # Remove the previous temp file
+                    
+                    # Create new command with rate parameter and fixed pitch formatting
+                    command = [
+                        "edge-tts",
+                        f"--pitch={pitch_param}",
+                        f"--rate={rate_adjustment}",
+                        "--voice", voice,
+                        "--text", text,
+                        "--write-media", temp_filename
+                    ]
+                    subprocess.run(command, check=True)
+                    
+                    # Reload audio with rate adjustment
+                    audio = AudioSegment.from_file(temp_filename, format="mp3")
             else:
-                rate_adjustment = f"+{int((speed_factor - 1) * 100)}%"
-            
-            # Regenerate with adjusted rate
-            os.unlink(temp_file.name)  # Remove the previous temp file
-            
-            # Create new command with rate parameter and fixed pitch formatting
-            command = [
-                "edge-tts",
-                f"--pitch={pitch_param}",
-                f"--rate={rate_adjustment}",
-                "--voice", voice,
-                "--text", text,
-                "--write-media", temp_filename
-            ]
-            subprocess.run(command, check=True)
-            
-            # Reload audio with rate adjustment
-            audio = AudioSegment.from_file(temp_filename, format="mp3")
+                # Use Edge TTS rate parameter for larger adjustments
+                if speed_factor < 1:
+                    rate_adjustment = f"-{int((1 - speed_factor) * 100)}%"
+                else:
+                    rate_adjustment = f"+{int((speed_factor - 1) * 100)}%"
+                
+                # Regenerate with adjusted rate
+                os.unlink(temp_file.name)  # Remove the previous temp file
+                
+                # Create new command with rate parameter and fixed pitch formatting
+                command = [
+                    "edge-tts",
+                    f"--pitch={pitch_param}",
+                    f"--rate={rate_adjustment}",
+                    "--voice", voice,
+                    "--text", text,
+                    "--write-media", temp_filename
+                ]
+                subprocess.run(command, check=True)
+                
+                # Reload audio with rate adjustment
+                audio = AudioSegment.from_file(temp_filename, format="mp3")
             
             # Fine-tune if needed
             new_duration = len(audio) / 1000
@@ -437,6 +478,70 @@ def generate_tts(segments, target_language, voice_config=None, output_dir="audio
         print(f"Trimmed to exactly {max_end_time:.2f} seconds")
     
     return output_path
+
+def smooth_speed_change(audio_path, target_duration):
+    """
+    Adjust audio speed with a smooth transition to match target duration
+    
+    Args:
+        audio_path: Path to audio file to adjust
+        target_duration: Target duration in seconds
+        
+    Returns:
+        Modified AudioSegment
+    """
+    # Load audio with librosa
+    y, sr = librosa.load(audio_path, sr=None)
+    
+    # Calculate current duration and speed factor
+    current_duration = librosa.get_duration(y=y, sr=sr)
+    speed_factor = current_duration / target_duration
+    
+    # If the difference is minimal, return original audio
+    if abs(speed_factor - 1) < 0.05:
+        return AudioSegment.from_file(audio_path)
+    
+    # Limit speed factor to reasonable range
+    speed_factor = min(max(speed_factor, 0.7), 2.0)
+    
+    # For small adjustments, use simple time stretching
+    if abs(speed_factor - 1) < 0.2:
+        stretched_audio = librosa.effects.time_stretch(y, rate=speed_factor)
+        
+        # Save to temporary file
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+        sf.write(temp_file.name, stretched_audio, sr)
+        
+        # Load as AudioSegment and return
+        adjusted_audio = AudioSegment.from_file(temp_file.name)
+        os.unlink(temp_file.name)
+        return adjusted_audio
+    
+    # For larger adjustments, use segmented approach for smoother transitions
+    num_segments = 50  # More segments for smoother transition
+    stretch_factors = np.linspace(1.0, speed_factor, num_segments)
+    
+    segment_length = len(y) // num_segments
+    stretched_audio = []
+    
+    for i, factor in enumerate(stretch_factors):
+        start = i * segment_length
+        end = start + segment_length if i < num_segments - 1 else len(y)
+        chunk = librosa.effects.time_stretch(y[start:end], rate=factor)
+        stretched_audio.append(chunk)
+    
+    # Combine segments
+    final_audio = np.concatenate(stretched_audio)
+    
+    # Save to temporary file
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+    sf.write(temp_file.name, final_audio, sr)
+    
+    # Load as AudioSegment and return
+    adjusted_audio = AudioSegment.from_file(temp_file.name)
+    os.unlink(temp_file.name)
+    
+    return adjusted_audio
 
 
 
