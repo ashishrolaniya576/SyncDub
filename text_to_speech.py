@@ -98,9 +98,13 @@ def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=N
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
     temp_filename = temp_file.name  # Store filename before closing
     temp_file.close()
+    
+    # Fix pitch formatting
+    pitch_param = f"+{pitch}Hz" if pitch >= 0 else f"{pitch}Hz"
+    
     command = [
         "edge-tts",
-        f"--pitch=+{pitch}Hz",
+        f"--pitch={pitch_param}",
         "--voice", voice,
         "--text", text,
         "--write-media", temp_filename
@@ -121,7 +125,6 @@ def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=N
             
             # Apply time adjustment
             # Instead of speed adjustments after generation, use Edge TTS rate parameter
-            rate_adjustment = f"{int((speed_factor - 1) * 100)}%"
             if speed_factor < 1:
                 rate_adjustment = f"-{int((1 - speed_factor) * 100)}%"
             else:
@@ -130,10 +133,10 @@ def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=N
             # Regenerate with adjusted rate
             os.unlink(temp_file.name)  # Remove the previous temp file
             
-            # Create new command with rate parameter
+            # Create new command with rate parameter and fixed pitch formatting
             command = [
                 "edge-tts",
-                f"--pitch=+{pitch}Hz",
+                f"--pitch={pitch_param}",
                 f"--rate={rate_adjustment}",
                 "--voice", voice,
                 "--text", text,
