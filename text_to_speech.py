@@ -118,7 +118,7 @@ def smooth_speed_change(audio_path, target_duration):
             return audio_path
         
         # Limit speed factor to reasonable range
-        speed_factor = min(max(speed_factor, 0.7), 1.5)
+        speed_factor = min(max(speed_factor, 0.7), 2)
         
         # For small adjustments, use simple time stretching
         if abs(speed_factor - 1) < 0.3:
