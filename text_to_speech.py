@@ -293,7 +293,7 @@ def create_segmented_xtts(text, reference_audio, language, output_path, target_d
     if tts_model is None:
         raise RuntimeError("XTTS model could not be loaded. Ensure TTS is installed.")
     
-        # Verify reference audio exists
+    # Verify reference audio exists
     if not os.path.exists(reference_audio):
         raise FileNotFoundError(f"Reference audio file not found: {reference_audio}")
     
@@ -352,65 +352,71 @@ def create_segmented_xtts(text, reference_audio, language, output_path, target_d
                 language=language,
                 file_path=temp_filename
             )
-    
-    # Load generated audio
-    audio = AudioSegment.from_file(temp_filename)
-    
-    # Step 2: Apply duration adjustment if needed
-    if target_duration is not None:
-        current_duration = len(audio) / 1000  # ms to seconds
         
-        if abs(current_duration - target_duration) > 0.1:  # 100ms threshold
-            # Calculate speed factor - inverse of duration ratio
-            speed_factor = current_duration / target_duration
-            speed_factor = min(max(speed_factor, 0.7), 2.0)  # Allow wider range for better adjustment
+        # Load generated audio
+        audio = AudioSegment.from_file(temp_filename)
+        
+        # Step 2: Apply duration adjustment if needed
+        if target_duration is not None:
+            current_duration = len(audio) / 1000  # ms to seconds
             
-            logger.info(f"  Adjusting timing: {current_duration:.2f}s → {target_duration:.2f}s (speed factor: {speed_factor:.2f})")
-            
-            try:
-                # Always attempt smooth speed change since regeneration doesn't work
-                logger.info("  Applying smooth speed adjustment...")
-                adjusted_path = smooth_speed_change(temp_filename, target_duration)
+            if abs(current_duration - target_duration) > 0.1:  # 100ms threshold
+                # Calculate speed factor - inverse of duration ratio
+                speed_factor = current_duration / target_duration
+                speed_factor = min(max(speed_factor, 0.7), 2.0)  # Allow wider range for better adjustment
                 
-                if adjusted_path != temp_filename:  # If path is different, adjustment was done
-                    # Load the adjusted audio
-                    audio = AudioSegment.from_file(adjusted_path)
+                logger.info(f"  Adjusting timing: {current_duration:.2f}s → {target_duration:.2f}s (speed factor: {speed_factor:.2f})")
+                
+                try:
+                    # Always attempt smooth speed change since regeneration doesn't work
+                    logger.info("  Applying smooth speed adjustment...")
+                    adjusted_path = smooth_speed_change(temp_filename, target_duration)
                     
-                    # Check if adjustment was successful
-                    new_duration = len(audio) / 1000
-                    if abs(new_duration - target_duration) <= 0.15:  # 150ms tolerance
-                        logger.info(f"  Smooth adjustment successful: {new_duration:.2f}s")
+                    if adjusted_path != temp_filename:  # If path is different, adjustment was done
+                        # Load the adjusted audio
+                        audio = AudioSegment.from_file(adjusted_path)
                         
-                        # Clean up original file and use the adjusted one
-                        os.unlink(temp_filename)
-                        temp_filename = adjusted_path
-                    else:
-                        # Clean up adjusted file and just use duration adjustment
-                        logger.info(f"  Smooth adjustment not precise enough ({new_duration:.2f}s), will fine-tune with duration adjustment")
-                        os.unlink(adjusted_path)
-                        # We'll fall through to the final duration adjustment step
-            except Exception as e:
-                logger.warning(f"  Smooth speed adjustment failed: {str(e)}")
-                # We'll fall through to the final duration adjustment step
-            
-            # Always perform final duration adjustment to ensure exact timing
-            new_duration = len(audio) / 1000
-            if abs(new_duration - target_duration) > 0.1:
-                logger.info(f"  Fine-tuning with duration adjustment: {new_duration:.2f}s → {target_duration:.2f}s")
-                audio = adjust_audio_duration(audio, target_duration)
-    
-    # Save the final audio
-    audio.export(output_path, format="wav")
-    
-    # Clean up
-    os.unlink(temp_filename)
-    
-    # Log final duration
-    final_audio = AudioSegment.from_file(output_path)
-    final_duration = len(final_audio) / 1000
-    logger.info(f"  Final duration: {final_duration:.2f}s (target: {target_duration if target_duration else 'None'}s)")
-    
-    return output_path
+                        # Check if adjustment was successful
+                        new_duration = len(audio) / 1000
+                        if abs(new_duration - target_duration) <= 0.15:  # 150ms tolerance
+                            logger.info(f"  Smooth adjustment successful: {new_duration:.2f}s")
+                            
+                            # Clean up original file and use the adjusted one
+                            os.unlink(temp_filename)
+                            temp_filename = adjusted_path
+                        else:
+                            # Clean up adjusted file and just use duration adjustment
+                            logger.info(f"  Smooth adjustment not precise enough ({new_duration:.2f}s), will fine-tune with duration adjustment")
+                            os.unlink(adjusted_path)
+                            # We'll fall through to the final duration adjustment step
+                except Exception as e:
+                    logger.warning(f"  Smooth speed adjustment failed: {str(e)}")
+                    # We'll fall through to the final duration adjustment step
+                
+                # Always perform final duration adjustment to ensure exact timing
+                new_duration = len(audio) / 1000
+                if abs(new_duration - target_duration) > 0.1:
+                    logger.info(f"  Fine-tuning with duration adjustment: {new_duration:.2f}s → {target_duration:.2f}s")
+                    audio = adjust_audio_duration(audio, target_duration)
+        
+        # Save the final audio
+        audio.export(output_path, format="wav")
+        
+        # Clean up
+        os.unlink(temp_filename)
+        
+        # Log final duration
+        final_audio = AudioSegment.from_file(output_path)
+        final_duration = len(final_audio) / 1000
+        logger.info(f"  Final duration: {final_duration:.2f}s (target: {target_duration if target_duration else 'None'}s)")
+        
+        return output_path
+        
+    except Exception as e:
+        logger.error(f"XTTS generation failed: {e}")
+        if os.path.exists(temp_filename):
+            os.unlink(temp_filename)
+        raise
 
 def process_voice_config(voice_config):
     """
