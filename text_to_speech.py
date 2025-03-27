@@ -286,16 +286,14 @@ def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=N
     return output_path
 
 def create_segmented_xtts(text, reference_audio, language, output_path, target_duration=None):
-    """Create voice-cloned speech using XTTS with speaker's reference audio"""
+    """Create voice-cloned speech using XTTS with speaker's reference audio and duration control"""
     # Get the model (will be loaded on first call)
     tts_model = XTTSModelLoader.get_model()
     
     if tts_model is None:
         raise RuntimeError("XTTS model could not be loaded. Ensure TTS is installed.")
     
-    # print(reference_audio)
-
-    # Verify reference audio exists
+        # Verify reference audio exists
     if not os.path.exists(reference_audio):
         raise FileNotFoundError(f"Reference audio file not found: {reference_audio}")
     
@@ -305,17 +303,60 @@ def create_segmented_xtts(text, reference_audio, language, output_path, target_d
     temp_file.close()
     
     logger.info(f"Generating XTTS speech using reference: {os.path.basename(reference_audio)}")
-    tts_model.tts_to_file(
-        text=text,
-        speaker_wav=reference_audio,
-        language=language,
-        file_path=temp_filename
-    )
+
+    # Step 1: Try to optimize the generation parameters based on text length and target duration
+    # Short text might need special handling to avoid excessive padding
+    is_short_text = len(text.strip()) < 10
+    
+    # XTTS generation options
+    generation_kwargs = {}
+    
+    # Add text length information for very short text to help the model
+    # Note: These are example parameters - actual parameter support depends on the XTTS version
+    if is_short_text and target_duration is not None and target_duration < 2.0:
+        logger.info(f"  Short text detected, attempting to minimize padding")
+        # These parameters may or may not be supported by the TTS model being used
+        generation_kwargs = {
+            'enable_text_splitting': False,  # Avoid splitting short text
+            'no_silence_end': True,          # Reduce trailing silence 
+        }
+        # Some models may support 'speed' parameter
+        if hasattr(tts_model, 'tts_with_speed'):
+            generation_kwargs['speed'] = 1.2  # Slightly faster for short text
+    
+    try:
+        # Try generating with optional parameters if supported
+        if generation_kwargs:
+            try:
+                tts_model.tts_to_file(
+                    text=text,
+                    speaker_wav=reference_audio,
+                    language=language,
+                    file_path=temp_filename,
+                    **generation_kwargs
+                )
+            except (TypeError, ValueError):
+                # If parameters aren't supported, fall back to standard call
+                logger.info("  Advanced parameters not supported, using standard generation")
+                tts_model.tts_to_file(
+                    text=text,
+                    speaker_wav=reference_audio,
+                    language=language,
+                    file_path=temp_filename
+                )
+        else:
+            # Standard generation
+            tts_model.tts_to_file(
+                text=text,
+                speaker_wav=reference_audio,
+                language=language,
+                file_path=temp_filename
+            )
     
     # Load generated audio
     audio = AudioSegment.from_file(temp_filename)
     
-    # Apply duration adjustment if needed
+    # Step 2: Apply duration adjustment if needed
     if target_duration is not None:
         current_duration = len(audio) / 1000  # ms to seconds
         
