@@ -338,8 +338,7 @@ with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
     process_btn.click(
         fn=lambda lang, *args: LANGUAGE_OPTIONS[lang],
         inputs=[target_language],
-        outputs=[],
-        _js="(lang) => {window.selected_language = lang; return lang;}"
+        outputs=[]
     ).then(
         fn=process_video,
         inputs=[video_input, youtube_url, target_language, tts_choice, max_speakers],
