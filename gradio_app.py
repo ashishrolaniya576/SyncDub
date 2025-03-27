@@ -377,36 +377,39 @@ with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
         outputs=[transcript_output, status_output]
     )
     
-    # Navigate to second tab after processing
+    # Navigate to second tab after processing - FIX FOR TAB UPDATE
     process_chain.success(
-        fn=lambda: gr.Tab.update(selected=True),
+        fn=lambda: gr.Tabs(selected=1),  # Use index 1 for second tab
         inputs=[],
-        outputs=tab2
+        outputs=tabs  # Output the tabs component directly
     )
     
     # Update the UI in the second tab
     process_chain.success(
         fn=create_speaker_ui,
         inputs=[],  # No inputs needed
-        outputs=[voice_config_container]
+        outputs=voice_config_container
     )
     
-    # Show the generate button after processing
+    # Show the generate button after processing - FIX FOR BUTTON UPDATE
     process_chain.success(
-        fn=lambda: gr.Button.update(visible=True),
+        fn=lambda: gr.Button(visible=True),
         inputs=[],
         outputs=generate_btn
     )
     
     # Handle the generate button click
-    generate_btn.click(
+    generate_chain = generate_btn.click(
         fn=finalize_video,
         inputs=[],
         outputs=[output_video, subtitle_download, final_status]
-    ).success(
-        fn=lambda: gr.Tab.update(selected=True),
+    )
+    
+    # Navigate to third tab after generation - FIX FOR TAB UPDATE
+    generate_chain.success(
+        fn=lambda: gr.Tabs(selected=2),  # Use index 2 for third tab
         inputs=[],
-        outputs=tab3
+        outputs=tabs  # Output the tabs component directly
     )
 
 if __name__ == "__main__":
