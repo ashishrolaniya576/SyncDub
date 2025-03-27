@@ -381,7 +381,7 @@ with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
     process_chain.success(
         fn=lambda: gr.Tab.update(selected=True),
         inputs=[],
-        outputs=tab2  
+        outputs=tab2
     )
     
     # Update the UI in the second tab
@@ -427,4 +427,4 @@ if __name__ == "__main__":
         print("MoviePy now successfully imported")
     
     # Launch the Gradio app with Kaggle-friendly options
-    app.launch(share=False, server_name="0.0.0.0", server_port=7860)
+    app.launch(share=True, server_name="0.0.0.0", server_port=7860)
