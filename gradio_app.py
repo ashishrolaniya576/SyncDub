@@ -318,10 +318,16 @@ def finalize_video(progress=gr.Progress()):
         return None, None, update_status(f"Error: {str(e)}")
 
 # Create the Gradio interface
-with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
+with gr.Blocks(title="SyncDub - AI Video Dubbing", js="""
+function switch_to_tab(tab_index) {
+    document.querySelectorAll('.tab-nav button')[tab_index].click();
+}
+function show_generate_button() {
+    document.getElementById('generate-btn').style.display = 'block';
+}
+""") as app:
     gr.Markdown("# SyncDub - AI Video Dubbing")
     gr.Markdown("Translate and dub videos with AI-powered voice cloning")
-    
     with gr.Tabs() as tabs:
         with gr.Tab("1. Upload & Process") as tab1:
             with gr.Row():
@@ -359,8 +365,8 @@ with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
                 placeholder_msg = gr.Markdown("Please process a video in the Upload & Process tab first.")
                 # The speaker UI will replace this content
             
-            # Generate button shown after speaker configuration
-            generate_btn = gr.Button("Generate Dubbed Video", visible=False)
+            # Generate button shown after speaker configuration - add an element id
+            generate_btn = gr.Button("Generate Dubbed Video", visible=False, elem_id="generate-btn")
         
         with gr.Tab("3. Final Output") as tab3:
             with gr.Row():
@@ -377,13 +383,6 @@ with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
         outputs=[transcript_output, status_output]
     )
     
-    # Navigate to second tab after processing - FIX FOR TAB UPDATE
-    process_chain.success(
-        fn=lambda: gr.Tabs(selected=1),  # Use index 1 for second tab
-        inputs=[],
-        outputs=tabs  # Output the tabs component directly
-    )
-    
     # Update the UI in the second tab
     process_chain.success(
         fn=create_speaker_ui,
@@ -391,11 +390,12 @@ with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
         outputs=voice_config_container
     )
     
-    # Show the generate button after processing - FIX FOR BUTTON UPDATE
+    # Use JavaScript to switch to tab 2 and show generate button
     process_chain.success(
-        fn=lambda: gr.Button(visible=True),
-        inputs=[],
-        outputs=generate_btn
+        fn=None,
+        _js="() => {switch_to_tab(1); show_generate_button(); return [];}",
+        inputs=None,
+        outputs=None
     )
     
     # Handle the generate button click
@@ -405,11 +405,12 @@ with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
         outputs=[output_video, subtitle_download, final_status]
     )
     
-    # Navigate to third tab after generation - FIX FOR TAB UPDATE
+    # Use JavaScript to switch to tab 3
     generate_chain.success(
-        fn=lambda: gr.Tabs(selected=2),  # Use index 2 for third tab
-        inputs=[],
-        outputs=tabs  # Output the tabs component directly
+        fn=None,
+        _js="() => {switch_to_tab(2); return [];}",
+        inputs=None,
+        outputs=None
     )
 
 if __name__ == "__main__":
