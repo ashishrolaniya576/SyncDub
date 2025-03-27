@@ -390,10 +390,16 @@ function show_generate_button() {
         outputs=voice_config_container
     )
     
-    # Use JavaScript to switch to tab 2 and show generate button
+    # Create a dummy function for JavaScript execution
+    def switch_to_tab2():
+        return None
+
+    # Add JavaScript to the function
+    switch_to_tab2.js = "() => {switch_to_tab(1); show_generate_button(); return [];}"
+
+    # Use the JS-enhanced function
     process_chain.success(
-        fn=None,
-        _js="() => {switch_to_tab(1); show_generate_button(); return [];}",
+        fn=switch_to_tab2,
         inputs=None,
         outputs=None
     )
@@ -405,10 +411,16 @@ function show_generate_button() {
         outputs=[output_video, subtitle_download, final_status]
     )
     
-    # Use JavaScript to switch to tab 3
+    # Create a dummy function for JavaScript execution to tab 3
+    def switch_to_tab3():
+        return None
+
+    # Add JavaScript to the function
+    switch_to_tab3.js = "() => {switch_to_tab(2); return [];}"
+
+    # Use the JS-enhanced function
     generate_chain.success(
-        fn=None,
-        _js="() => {switch_to_tab(2); return [];}",
+        fn=switch_to_tab3,
         inputs=None,
         outputs=None
     )
