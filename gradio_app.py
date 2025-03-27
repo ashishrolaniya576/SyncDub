@@ -165,7 +165,8 @@ def process_video(video_input, youtube_url, target_language, tts_choice, max_spe
         logger.exception("Error processing video")
         return None, update_status(f"Error: {str(e)}")
 
-def create_speaker_ui(speakers_detected):
+# Update this function to make the parameter optional
+def create_speaker_ui(speakers_detected=None):
     """Dynamically create UI elements for speaker configuration based on detected speakers"""
     global speaker_info
     use_voice_cloning = speaker_info.get("use_voice_cloning", False)
@@ -380,7 +381,7 @@ with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
     process_chain.success(
         fn=lambda: gr.Tab.update(selected=True),
         inputs=[],
-        outputs=tab2
+        outputs=tab2  
     )
     
     # Update the UI in the second tab
@@ -414,5 +415,5 @@ if __name__ == "__main__":
         print("Warning: HUGGINGFACE_TOKEN not found in .env file")
         print("Speaker diarization may not work properly")
     
-    # Launch the Gradio app
-    app.launch(share=True)
+    # Launch the Gradio app with Kaggle-friendly options
+    app.launch(share=False, server_name="0.0.0.0", server_port=7860)
