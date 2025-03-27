@@ -415,5 +415,16 @@ if __name__ == "__main__":
         print("Warning: HUGGINGFACE_TOKEN not found in .env file")
         print("Speaker diarization may not work properly")
     
+    # For Kaggle, check and install missing dependencies
+    try:
+        import moviepy.editor
+        print("MoviePy successfully imported")
+    except ImportError:
+        print("Installing missing packages...")
+        import subprocess
+        subprocess.check_call(['pip', 'install', 'moviepy', 'ffmpeg-python'])
+        import moviepy.editor
+        print("MoviePy now successfully imported")
+    
     # Launch the Gradio app with Kaggle-friendly options
     app.launch(share=False, server_name="0.0.0.0", server_port=7860)
