@@ -318,14 +318,7 @@ def finalize_video(progress=gr.Progress()):
         return None, None, update_status(f"Error: {str(e)}")
 
 # Create the Gradio interface
-with gr.Blocks(title="SyncDub - AI Video Dubbing", js="""
-function switch_to_tab(tab_index) {
-    document.querySelectorAll('.tab-nav button')[tab_index].click();
-}
-function show_generate_button() {
-    document.getElementById('generate-btn').style.display = 'block';
-}
-""") as app:
+with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
     gr.Markdown("# SyncDub - AI Video Dubbing")
     gr.Markdown("Translate and dub videos with AI-powered voice cloning")
     with gr.Tabs() as tabs:
@@ -357,18 +350,19 @@ function show_generate_button() {
                 with gr.Column():
                     transcript_output = gr.Textbox(label="Translation Preview", lines=10)
                     status_output = gr.Textbox(label="Status", lines=10)
-        
-        with gr.Tab("2. Configure Voices") as tab2:
-            # Simplify the structure - just one container for everything
-            with gr.Column() as voice_config_container:
-                # Initial placeholder message
-                placeholder_msg = gr.Markdown("Please process a video in the Upload & Process tab first.")
-                # The speaker UI will replace this content
             
-            # Generate button shown after speaker configuration - add an element id
-            generate_btn = gr.Button("Generate Dubbed Video", visible=False, elem_id="generate-btn")
+            # Add a collapsible section for voice configuration that's initially hidden
+            with gr.Accordion("Speaker Voice Configuration", visible=False) as voice_config_accordion:
+                with gr.Column() as voice_config_container:
+                    # Initial placeholder message
+                    placeholder_msg = gr.Markdown("Processing video...")
+                    # The speaker UI will replace this content
+                
+                # Generate button will be shown inside the accordion after configuration
+                generate_btn = gr.Button("Generate Dubbed Video", visible=False, elem_id="generate-btn")
         
-        with gr.Tab("3. Final Output") as tab3:
+        # Keep Tab 3 for the final output
+        with gr.Tab("2. Final Output") as tab3:
             with gr.Row():
                 with gr.Column():
                     final_status = gr.Textbox(label="Generation Status", lines=10)
@@ -383,25 +377,25 @@ function show_generate_button() {
         outputs=[transcript_output, status_output]
     )
     
-    # Update the UI in the second tab
+    # Update the UI in the voice configuration accordion
     process_chain.success(
         fn=create_speaker_ui,
         inputs=[],  # No inputs needed
         outputs=voice_config_container
     )
     
-    # Create a dummy function for JavaScript execution
-    def switch_to_tab2():
-        return None
-
-    # Add JavaScript to the function
-    switch_to_tab2.js = "() => {switch_to_tab(1); show_generate_button(); return [];}"
-
-    # Use the JS-enhanced function
+    # Show the voice configuration accordion after processing is complete
     process_chain.success(
-        fn=switch_to_tab2,
-        inputs=None,
-        outputs=None
+        fn=lambda: gr.update(visible=True),
+        inputs=[],
+        outputs=voice_config_accordion
+    )
+    
+    # Show the generate button
+    process_chain.success(
+        fn=lambda: gr.update(visible=True),
+        inputs=[],
+        outputs=generate_btn
     )
     
     # Handle the generate button click
@@ -411,18 +405,11 @@ function show_generate_button() {
         outputs=[output_video, subtitle_download, final_status]
     )
     
-    # Create a dummy function for JavaScript execution to tab 3
-    def switch_to_tab3():
-        return None
-
-    # Add JavaScript to the function
-    switch_to_tab3.js = "() => {switch_to_tab(2); return [];}"
-
-    # Use the JS-enhanced function
+    # Switch to output tab after generation
     generate_chain.success(
-        fn=switch_to_tab3,
-        inputs=None,
-        outputs=None
+        fn=lambda: gr.update(selected=True),
+        inputs=[],
+        outputs=tab3
     )
 
 if __name__ == "__main__":
