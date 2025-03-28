@@ -146,7 +146,10 @@ def main():
                 if match:
                     speaker_id = int(match.group(1))
                     gender = input(f"Select voice gender for Speaker {speaker_id+1} (m/f): ").lower()
-                    voice_config[speaker_id] = "female" if gender.startswith("f") else "male"
+                    voice_config[speaker_id] = {
+                        'engine': 'edge_tts',
+                        'gender': "female" if gender.startswith("f") else "male"
+                    }
     
     # Step 7: Generate speech in target language
     logger.info("Generating speech...")
