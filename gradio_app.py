@@ -41,7 +41,7 @@ def create_session_id():
     import uuid
     return str(uuid.uuid4())[:8]
 
-def process_video(media_source, target_language, tts_choice, max_speakers, session_id, progress=gr.Progress()):
+def process_video(media_source, target_language, tts_choice, max_speakers, speaker_genders, session_id, progress=gr.Progress()):
     """Main processing function that handles the complete pipeline"""
     global processing_status
     processing_status[session_id] = {"status": "Starting", "progress": 0}
@@ -122,6 +122,7 @@ def process_video(media_source, target_language, tts_choice, max_speakers, sessi
             if 'speaker' in segment:
                 unique_speakers.add(segment['speaker'])
         
+        # Use provided speaker genders instead of automatic assignment
         use_voice_cloning = tts_choice == "Voice cloning (XTTS)"
         voice_config = {}  # Map of speaker_id to gender or voice config
         
@@ -149,20 +150,25 @@ def process_video(media_source, target_language, tts_choice, max_speakers, sessi
                             'language': target_language
                         }
                     else:
-                        # Fallback to Edge TTS if no reference audio
-                        gender = "female" if speaker_id % 2 == 0 else "male"
+                        # Use selected gender instead of automatic assignment
+                        gender = "female"  # Default fallback
+                        if str(speaker_id) in speaker_genders and speaker_genders[str(speaker_id)]:
+                            gender = speaker_genders[str(speaker_id)]
+                        
                         voice_config[speaker_id] = {
                             'engine': 'edge_tts',
                             'gender': gender
                         }
         else:
-            # Standard Edge TTS configuration with alternating voices
+            # Use selected gender instead of automatic assignment
             if len(unique_speakers) > 0:
                 for speaker in sorted(list(unique_speakers)):
                     match = re.search(r'SPEAKER_(\d+)', speaker)
                     if match:
                         speaker_id = int(match.group(1))
-                        gender = "female" if speaker_id % 2 == 0 else "male"
+                        gender = "female"  # Default fallback
+                        if str(speaker_id) in speaker_genders and speaker_genders[str(speaker_id)]:
+                            gender = speaker_genders[str(speaker_id)]
                         voice_config[speaker_id] = gender
         
         # Step 7: Generate speech in target language
@@ -252,6 +258,17 @@ def create_interface():
                         placeholder="e.g. 2"
                     )
                     
+                    # Add speaker gender selection
+                    gr.Markdown("### Speaker Gender Selection")
+                    speaker_genders = {}
+                    for i in range(8):  # Support up to 8 speakers
+                        speaker_genders[str(i)] = gr.Radio(
+                            choices=["male", "female"],
+                            value="male" if i % 2 == 1 else "female",  # Default alternating pattern
+                            label=f"Speaker {i} Gender",
+                            visible=True
+                        )
+                    
                     process_btn = gr.Button("Process Video", variant="primary")
                     status_text = gr.Textbox(label="Status", value="Ready", interactive=False)
                     
@@ -290,10 +307,17 @@ def create_interface():
                 outputs=[status_text]
             )
             
-            # Connect the process button to the processing function
+            # Connect the process button to the processing function with speaker genders
             process_btn.click(
                 fn=process_video, 
-                inputs=[media_input, target_language, tts_choice, max_speakers, gr.State(session_id)],
+                inputs=[
+                    media_input, 
+                    target_language, 
+                    tts_choice, 
+                    max_speakers, 
+                    gr.Group([speaker_genders[str(i)] for i in range(8)]),  # Pass all speaker gender selections
+                    gr.State(session_id)
+                ],
                 outputs=[gr.JSON()]
             ).then(
                 fn=start_status_updates,
