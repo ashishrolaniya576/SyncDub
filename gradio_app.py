@@ -159,7 +159,7 @@ def process_video(video_input, youtube_url, target_language, tts_choice, max_spe
                 sample_transcript += f"\n... and {len(translated_segments) - 5} more segments"
         
         progress(1.0, desc="Initial processing complete")
-        return sample_transcript, update_status("Initial processing complete. Please configure speaker voices in the next tab.")
+        return sample_transcript, update_status("Initial processing complete. Please configure speaker voices below.")
     
     except Exception as e:
         logger.exception("Error processing video")
@@ -293,12 +293,19 @@ def finalize_video(progress=gr.Progress()):
                 }
                 update_status(f"Speaker {speaker_id+1}{name_display}: Using voice cloning (gender: {gender})")
             else:
-                # Edge TTS configuration
-                voice_config[speaker_id] = {
-                    'engine': 'edge_tts',
-                    'gender': gender
-                }
-                update_status(f"Speaker {speaker_id+1}{name_display}: Using Edge TTS ({gender})")
+                # Handle simple dubbing mode (for compatibility with original CLI code)
+                if not use_voice_cloning:
+                    # Original simple format for backward compatibility 
+                    # (if your generate_tts function expects just strings for simple mode)
+                    voice_config[speaker_id] = "female" if gender == "female" else "male"
+                    update_status(f"Speaker {speaker_id+1}{name_display}: Using Edge TTS ({gender})")
+                else:
+                    # Extended format for edge TTS when in voice cloning mode
+                    voice_config[speaker_id] = {
+                        'engine': 'edge_tts',
+                        'gender': gender
+                    }
+                    update_status(f"Speaker {speaker_id+1}{name_display}: Using Edge TTS ({gender})")
         
         # Generate speech in target language
         update_status("Generating speech audio...")
