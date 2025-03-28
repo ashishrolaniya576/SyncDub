@@ -122,37 +122,34 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
             if 'speaker' in segment:
                 unique_speakers.add(segment['speaker'])
         
-        # Use provided speaker genders instead of automatic assignment
+        # Use provided speaker genders
         use_voice_cloning = tts_choice == "Voice cloning (XTTS)"
         voice_config = {}  # Map of speaker_id to gender or voice config
         
         if use_voice_cloning:
             # Extract reference audio for voice cloning
-            progress(0.65, desc="Extracting speaker reference audio")
-            processing_status[session_id] = {"status": "Extracting speaker reference audio", "progress": 0.65}
-            
             reference_files = diarizer.extract_speaker_references(
                 clean_audio_path, 
                 speakers, 
                 output_dir="reference_audio"
             )
             
-            # Create voice config automatically for XTTS
+            # Create voice config for XTTS
             for speaker in sorted(list(unique_speakers)):
                 match = re.search(r'SPEAKER_(\d+)', speaker)
                 if match:
                     speaker_id = int(match.group(1))
                     if speaker in reference_files:
-                        # Alternate voices by gender for better distinction
                         voice_config[speaker_id] = {
                             'engine': 'xtts',
                             'reference_audio': reference_files[speaker],
                             'language': target_language
                         }
                     else:
-                        # Use selected gender instead of automatic assignment
+                        # Fallback to Edge TTS if no reference audio
                         gender = "female"  # Default fallback
-                        if str(speaker_id) in speaker_genders and speaker_genders[str(speaker_id)]:
+                        # Use selected gender if available
+                        if str(speaker_id) in speaker_genders:
                             gender = speaker_genders[str(speaker_id)]
                         
                         voice_config[speaker_id] = {
@@ -160,16 +157,18 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
                             'gender': gender
                         }
         else:
-            # Use selected gender instead of automatic assignment
-            if len(unique_speakers) > 0:
-                for speaker in sorted(list(unique_speakers)):
-                    match = re.search(r'SPEAKER_(\d+)', speaker)
-                    if match:
-                        speaker_id = int(match.group(1))
-                        gender = "female"  # Default fallback
-                        if str(speaker_id) in speaker_genders and speaker_genders[str(speaker_id)]:
-                            gender = speaker_genders[str(speaker_id)]
-                        voice_config[speaker_id] = gender
+            # Standard Edge TTS configuration using provided genders
+            for speaker in sorted(list(unique_speakers)):
+                match = re.search(r'SPEAKER_(\d+)', speaker)
+                if match:
+                    speaker_id = int(match.group(1))
+                    gender = "female" if speaker_id % 2 == 0 else "male"  # Default fallback
+                    
+                    # Use selected gender if available
+                    if str(speaker_id) in speaker_genders:
+                        gender = speaker_genders[str(speaker_id)]
+                        
+                    voice_config[speaker_id] = gender
         
         # Step 7: Generate speech in target language
         progress(0.7, desc="Generating speech")
@@ -196,7 +195,11 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
     except Exception as e:
         logger.exception("Error in processing pipeline")
         processing_status[session_id] = {"status": f"Error: {str(e)}", "progress": -1}
-        return {"error": f"Error: {str(e)}"}
+        return {
+            "video": None,
+            "subtitle": None,
+            "message": f"Error: {str(e)}"
+        }
 
 def get_processing_status(session_id):
     """Get the current processing status for the given session"""
@@ -233,48 +236,100 @@ def create_interface():
         with gr.Tab("Process Video"):
             with gr.Row():
                 with gr.Column(scale=2):
-                    media_input = gr.Textbox(label="Video URL or File Path", placeholder="Enter a YouTube URL or local file path")
-                    upload_button = gr.UploadButton("Or Upload Video", file_types=["video"])
+                    media_input = gr.Textbox(label="Video URL or File Upload", placeholder="Enter a YouTube URL or upload a video file")
                     
-                    def handle_upload(file):
-                        return file.name
-                    
-                    upload_button.upload(handle_upload, upload_button, media_input)
-                    
-                    target_language = gr.Dropdown(
-                        choices=["en", "es", "fr", "de", "it", "pt", "nl", "ru", "zh", "ja", "ko", "ar", "hi"],
-                        value="en",
-                        label="Target Language"
-                    )
-                    
-                    tts_choice = gr.Radio(
-                        choices=["Simple dubbing (Edge TTS)", "Voice cloning (XTTS)"],
-                        value="Simple dubbing (Edge TTS)",
-                        label="TTS Engine"
-                    )
-                    
-                    max_speakers = gr.Textbox(
-                        label="Maximum number of speakers to detect (leave blank for auto)",
-                        placeholder="e.g. 2"
-                    )
-                    
-                    # Add speaker gender selection
-                    gr.Markdown("### Speaker Gender Selection")
-                    speaker_genders = {}
-                    for i in range(8):  # Support up to 8 speakers
-                        speaker_genders[str(i)] = gr.Radio(
-                            choices=["male", "female"],
-                            value="male" if i % 2 == 1 else "female",  # Default alternating pattern
-                            label=f"Speaker {i} Gender",
-                            visible=True
+                    with gr.Row():
+                        target_language = gr.Dropdown(
+                            choices=["en", "es", "fr", "de", "it", "ja", "ko", "pt", "ru", "zh"],
+                            label="Target Language",
+                            value="en"
                         )
+                        tts_choice = gr.Radio(
+                            choices=["Simple dubbing (Edge TTS)", "Voice cloning (XTTS)"],
+                            label="TTS Method",
+                            value="Simple dubbing (Edge TTS)"
+                        )
+                    
+                    # Speaker count input and update button
+                    with gr.Row():
+                        max_speakers = gr.Textbox(label="Maximum number of speakers", placeholder="Leave blank for auto")
+                        update_speakers_btn = gr.Button("Update Speaker Options")
+                    
+                    # Speaker gender container
+                    with gr.Group(visible=False) as speaker_genders_container:
+                        gr.Markdown("### Speaker Gender Selection")
+                        speaker_genders = {}
+                        for i in range(8):  # Support up to 8 speakers
+                            speaker_genders[str(i)] = gr.Radio(
+                                choices=["male", "female"],
+                                value="male" if i % 2 == 1 else "female",
+                                label=f"Speaker {i} Gender",
+                                visible=False  # Initially hidden
+                            )
                     
                     process_btn = gr.Button("Process Video", variant="primary")
                     status_text = gr.Textbox(label="Status", value="Ready", interactive=False)
-                    
+                
                 with gr.Column(scale=3):
-                    output = gr.Video(label="Dubbed Video")
-                    subtitle_download = gr.File(label="Download Subtitles")
+                    output = gr.Video(label="Output Video")
+                    subtitle_output = gr.File(label="Generated Subtitles")
+                    output_message = gr.Textbox(label="Message", interactive=False)
+            
+            # Function to update speaker gender options
+            def update_speaker_options(max_speakers_value):
+                updates = {}
+                
+                try:
+                    num_speakers = int(max_speakers_value) if max_speakers_value.strip() else 0
+                    
+                    if num_speakers > 0:
+                        # Show the speaker gender container
+                        updates[speaker_genders_container] = gr.Group(visible=True)
+                        
+                        # Show only the relevant number of speaker options
+                        for i in range(8):
+                            updates[speaker_genders[str(i)]] = gr.Radio(
+                                visible=(i < num_speakers)
+                            )
+                    else:
+                        # Hide all if no valid number
+                        updates[speaker_genders_container] = gr.Group(visible=False)
+                except ValueError:
+                    # Hide all if invalid number
+                    updates[speaker_genders_container] = gr.Group(visible=False)
+                
+                return updates
+            
+            # Connect the update button to show/hide speaker options
+            update_speakers_btn.click(
+                fn=update_speaker_options,
+                inputs=[max_speakers],
+                outputs=[speaker_genders_container] + [speaker_genders[str(i)] for i in range(8)]
+            )
+            
+            # Function to actually pass the gender values to the process_video function
+            def process_with_genders(media_source, target_language, tts_choice, max_speakers, *gender_values):
+                # Convert the gender values into a dictionary to pass to process_video
+                speaker_genders_dict = {str(i): gender for i, gender in enumerate(gender_values) if gender}
+                return process_video(media_source, target_language, tts_choice, max_speakers, 
+                                    speaker_genders_dict, session_id)
+            
+            # Connect the process button
+            process_btn.click(
+                fn=process_with_genders, 
+                inputs=[
+                    media_input, 
+                    target_language, 
+                    tts_choice, 
+                    max_speakers, 
+                    # Pass individual radio components, not a Group
+                    *[speaker_genders[str(i)] for i in range(8)]
+                ],
+                outputs=[output, subtitle_output, output_message]
+            )
+            
+            # Update status periodically
+            status_timer = gr.Timer(2, lambda: get_processing_status(session_id), None, status_text)
             
             # Create a more compatible approach for status updates
             def start_status_updates(session_id):
@@ -305,32 +360,6 @@ def create_interface():
                 fn=check_status,
                 inputs=[gr.State(session_id)],
                 outputs=[status_text]
-            )
-            
-            # Connect the process button to the processing function with speaker genders
-            process_btn.click(
-                fn=process_video, 
-                inputs=[
-                    media_input, 
-                    target_language, 
-                    tts_choice, 
-                    max_speakers, 
-                    gr.Group([speaker_genders[str(i)] for i in range(8)]),  # Pass all speaker gender selections
-                    gr.State(session_id)
-                ],
-                outputs=[gr.JSON()]
-            ).then(
-                fn=start_status_updates,
-                inputs=[gr.State(session_id)],
-                outputs=[status_text]
-            ).then(
-                fn=lambda result: (
-                    result.get("video", None) if "error" not in result else None,
-                    result.get("subtitle", None) if "error" not in result else None,
-                    result.get("message", result.get("error", "Unknown error"))
-                ),
-                inputs=[gr.JSON()],
-                outputs=[output, subtitle_download, status_text]
             )
             
             # Create a simple auto-refresh component using a Textbox with a timer
