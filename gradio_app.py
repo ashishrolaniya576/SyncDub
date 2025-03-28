@@ -240,7 +240,7 @@ def create_interface():
                     
                     with gr.Row():
                         target_language = gr.Dropdown(
-                            choices=["en", "es", "fr", "de", "it", "ja", "ko", "pt", "ru", "zh"],
+                            choices=["hi","en", "es", "fr", "de", "it", "ja", "ko", "pt", "ru", "zh"],
                             label="Target Language",
                             value="en"
                         )
