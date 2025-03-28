@@ -252,6 +252,7 @@ def create_interface():
                                 ("Spanish", "es"), 
                                 ("French", "fr"), 
                                 ("German", "de"), 
+                                ("Hindi", "hi"),
                                 ("Italian", "it"), 
                                 ("Japanese", "ja"), 
                                 ("Korean", "ko"), 
@@ -260,7 +261,7 @@ def create_interface():
                                 ("Chinese", "zh")
                             ],
                             label="Target Language",
-                            value="en"
+                            value="hi"
                         )
                         tts_choice = gr.Radio(
                             choices=["Simple dubbing (Edge TTS)", "Voice cloning (XTTS)"],
