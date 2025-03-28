@@ -103,7 +103,7 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
         processing_status[session_id] = {"status": f"Translating to {target_language}", "progress": 0.5}
         
         # Validate target language
-        valid_languages = ["en", "es", "fr", "de", "it", "ja", "ko", "pt", "ru", "zh"]
+        valid_languages = ["en", "es", "fr", "de", "it", "ja", "ko", "pt", "ru", "zh", "hi"]
         if target_language not in valid_languages:
             logger.warning(f"Unsupported language: {target_language}, falling back to English")
             target_language = "en"
