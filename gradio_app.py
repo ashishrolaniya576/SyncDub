@@ -165,8 +165,7 @@ def process_video(video_input, youtube_url, target_language, tts_choice, max_spe
         logger.exception("Error processing video")
         return None, update_status(f"Error: {str(e)}")
 
-# Fix 1: Update create_speaker_ui function to return appropriate components
-def create_speaker_ui(speakers_detected=None):
+def create_speaker_ui():
     """Dynamically create UI elements for speaker configuration based on detected speakers"""
     global speaker_info
     use_voice_cloning = speaker_info.get("use_voice_cloning", False)
@@ -174,7 +173,7 @@ def create_speaker_ui(speakers_detected=None):
     unique_speakers = speaker_info.get("unique_speakers", [])
     
     if not unique_speakers:
-        return gr.Markdown("No speakers detected.")
+        return [gr.Markdown("No speakers detected.")]
     
     # Create a list of components to return
     components = []
@@ -202,7 +201,7 @@ def create_speaker_ui(speakers_detected=None):
         )
         components.append(speaker_name)
         
-        # Add gender selection for all speakers (exactly matching demo.py approach)
+        # Add gender selection for all speakers
         gender_radio = gr.Radio(
             choices=["Male", "Female"], 
             value="Male",
@@ -210,7 +209,7 @@ def create_speaker_ui(speakers_detected=None):
         )
         components.append(gender_radio)
         
-        # Handle voice cloning option (matching demo.py logic)
+        # Handle voice cloning option
         if use_voice_cloning and speaker in reference_files:
             # Reference audio exists for this speaker
             ref_audio = reference_files[speaker]
@@ -247,13 +246,6 @@ def create_speaker_ui(speakers_detected=None):
     
     return components
 
-# Fix 2: Update the tab navigation logic
-def switch_to_tab(tab_name):
-    """Helper function that returns JavaScript to switch to the specified tab"""
-    return f"""
-        document.querySelector("button[data-testid='tab-{tab_name}']").click();
-    """
-
 def finalize_video(progress=gr.Progress()):
     """Generate final dubbed video with configured voices"""
     global speaker_info
@@ -280,7 +272,6 @@ def finalize_video(progress=gr.Progress()):
         # Process speaker configurations from UI inputs
         voice_config = {}
         
-        # EXACTLY matching the logic from demo.py:
         if use_voice_cloning:
             for speaker_id, config in speaker_configs.items():
                 name = config["name_input"].value
@@ -294,12 +285,11 @@ def finalize_video(progress=gr.Progress()):
                         use_cloning_option = config["voice_option_input"].value == "Use voice cloning"
                     
                     if use_cloning_option:
-                        # XTTS voice cloning configuration - matches demo.py
+                        # XTTS voice cloning configuration
                         voice_config[speaker_id] = {
                             'engine': 'xtts',
                             'reference_audio': config["ref_audio"],
                             'language': target_language
-                            
                         }
                         update_status(f"Speaker {speaker_id+1}{name_display}: Using voice cloning with reference audio")
                     else:
@@ -310,20 +300,20 @@ def finalize_video(progress=gr.Progress()):
                         }
                         update_status(f"Speaker {speaker_id+1}{name_display}: Using Edge TTS ({gender}) - user choice")
                 else:
-                    # Fallback to Edge TTS if no reference audio - matches demo.py
+                    # Fallback to Edge TTS if no reference audio
                     voice_config[speaker_id] = {
                         'engine': 'edge_tts',
                         'gender': "female" if gender == "female" else "male"
                     }
                     update_status(f"Speaker {speaker_id+1}{name_display}: Using Edge TTS ({gender}) - no reference audio")
         else:
-            # Standard Edge TTS configuration - EXACTLY matching demo.py
+            # Standard Edge TTS configuration
             for speaker_id, config in speaker_configs.items():
                 name = config["name_input"].value if hasattr(config["name_input"], "value") else ""
                 name_display = f" ({name})" if name else ""
                 gender = config["gender_input"].value.lower() if hasattr(config["gender_input"], "value") else "male"
                 
-                # Simple string format as in demo.py
+                # Simple string format
                 voice_config[speaker_id] = "female" if gender == "female" else "male"
                 update_status(f"Speaker {speaker_id+1}{name_display}: Using Edge TTS ({gender})")
         
@@ -343,3 +333,135 @@ def finalize_video(progress=gr.Progress()):
     except Exception as e:
         logger.exception("Error generating dubbed video")
         return None, None, update_status(f"Error: {str(e)}")
+
+# Function to show the generate button after processing
+def show_generate_button():
+    return gr.update(visible=True)
+
+# Function to update message after processing
+def update_after_processing():
+    return "Processing complete! Please go to the 'Configure Voices' tab to continue."
+
+# Main Gradio App
+with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
+    gr.Markdown("# SyncDub - AI Video Dubbing")
+    gr.Markdown("Translate and dub videos with AI-powered voice cloning")
+    
+    with gr.Tabs() as tabs:
+        with gr.Tab("1. Upload & Process"):
+            with gr.Row():
+                with gr.Column():
+                    # Input section
+                    video_input = gr.Video(label="Upload Video")
+                    youtube_url = gr.Textbox(label="Or enter YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
+                    
+                    with gr.Row():
+                        target_language = gr.Dropdown(
+                            choices=list(LANGUAGE_OPTIONS.keys()),
+                            value="English",
+                            label="Target Language"
+                        )
+                        
+                        tts_choice = gr.Radio(
+                            choices=["Standard TTS", "Voice cloning (XTTS)"],
+                            value="Voice cloning (XTTS)",
+                            label="Voice Generation Method"
+                        )
+                    
+                    max_speakers = gr.Number(
+                        label="Max Speakers (Optional)", 
+                        value=None, 
+                        precision=0,
+                        placeholder="Leave empty for auto-detection"
+                    )
+                    
+                    process_btn = gr.Button("Process Video", variant="primary")
+                
+                with gr.Column():
+                    # Output/status section
+                    status_output = gr.Textbox(
+                        label="Status", 
+                        placeholder="Processing status will appear here...",
+                        lines=10,
+                        interactive=False
+                    )
+                    
+                    transcript_output = gr.Textbox(
+                        label="Sample Transcript", 
+                        placeholder="Transcript will appear here after processing...",
+                        lines=8,
+                        interactive=False
+                    )
+                    
+                    after_process_msg = gr.Textbox(
+                        label="Next Steps", 
+                        visible=False,
+                        interactive=False
+                    )
+        
+        with gr.Tab("2. Configure Voices"):
+            # Container for dynamic speaker UI elements
+            with gr.Column() as voice_config_container:
+                gr.Markdown("Please process a video in the Upload & Process tab first.")
+            
+            # Generate button (initially hidden)
+            generate_btn = gr.Button("Generate Dubbed Video", visible=False, variant="primary")
+        
+        with gr.Tab("3. Results"):
+            with gr.Column():
+                output_video = gr.Video(label="Dubbed Video", interactive=False)
+                with gr.Row():
+                    subtitle_download = gr.File(label="Download Subtitles")
+                    # A button to download video could be added here
+                final_status = gr.Textbox(
+                    label="Generation Status", 
+                    placeholder="Status will appear here during generation...",
+                    lines=5, 
+                    interactive=False
+                )
+    
+    # Connect events
+    process_chain = process_btn.click(
+        fn=process_video,
+        inputs=[video_input, youtube_url, target_language, tts_choice, max_speakers],
+        outputs=[transcript_output, status_output]
+    )
+    
+    # Update the UI in the second tab
+    process_chain.success(
+        fn=create_speaker_ui,
+        inputs=[],
+        outputs=voice_config_container
+    )
+    
+    # Show the generate button
+    process_chain.success(
+        fn=show_generate_button,
+        inputs=[],
+        outputs=generate_btn
+    )
+    
+    # Show instructions for next steps
+    process_chain.success(
+        fn=update_after_processing,
+        inputs=[],
+        outputs=after_process_msg
+    )
+    
+    # Set visibility for instruction message
+    process_chain.success(
+        fn=lambda: gr.update(visible=True),
+        inputs=[],
+        outputs=after_process_msg
+    )
+    
+    # Handle the generate button click
+    generate_chain = generate_btn.click(
+        fn=finalize_video,
+        inputs=[],
+        outputs=[output_video, subtitle_download, final_status]
+    )
+
+# Launch the app
+if __name__ == "__main__":
+    app.launch()
