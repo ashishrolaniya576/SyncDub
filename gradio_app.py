@@ -51,7 +51,7 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
         hf_token = os.getenv("HUGGINGFACE_TOKEN")
         
         if not hf_token:
-            return {"error": "HUGGINGFACE_TOKEN not found in .env file. Please set it up."}
+            return {"video": None, "subtitle": None, "message": "Error: HUGGINGFACE_TOKEN not found in .env file"}
         
         # Determine if input is URL or file
         is_url = media_source.startswith(("http://", "https://"))
@@ -102,10 +102,16 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
         progress(0.5, desc=f"Translating to {target_language}")
         processing_status[session_id] = {"status": f"Translating to {target_language}", "progress": 0.5}
         
+        # Validate target language
+        valid_languages = ["en", "es", "fr", "de", "it", "ja", "ko", "pt", "ru", "zh"]
+        if target_language not in valid_languages:
+            logger.warning(f"Unsupported language: {target_language}, falling back to English")
+            target_language = "en"
+        
         translated_segments = translate_text(
             final_segments, 
             target_lang=target_language,
-            translation_method="batch"  # Can be "batch" or "iterative" or "groq"
+            translation_method="batch"
         )
         
         # Generate subtitle file
@@ -122,12 +128,15 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
             if 'speaker' in segment:
                 unique_speakers.add(segment['speaker'])
         
+        logger.info(f"Detected {len(unique_speakers)} speakers")
+        
         # Use provided speaker genders
         use_voice_cloning = tts_choice == "Voice cloning (XTTS)"
         voice_config = {}  # Map of speaker_id to gender or voice config
         
         if use_voice_cloning:
             # Extract reference audio for voice cloning
+            logger.info("Extracting speaker reference audio for voice cloning...")
             reference_files = diarizer.extract_speaker_references(
                 clean_audio_path, 
                 speakers, 
@@ -143,13 +152,14 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
                         voice_config[speaker_id] = {
                             'engine': 'xtts',
                             'reference_audio': reference_files[speaker],
-                            'language': target_language
+                            'language': target_language  # Use the validated target language
                         }
+                        logger.info(f"Using voice cloning for Speaker {speaker_id+1} with reference file: {os.path.basename(reference_files[speaker])}")
                     else:
                         # Fallback to Edge TTS if no reference audio
+                        logger.warning(f"No reference audio found for Speaker {speaker_id+1}, falling back to Edge TTS")
                         gender = "female"  # Default fallback
-                        # Use selected gender if available
-                        if str(speaker_id) in speaker_genders:
+                        if str(speaker_id) in speaker_genders and speaker_genders[str(speaker_id)]:
                             gender = speaker_genders[str(speaker_id)]
                         
                         voice_config[speaker_id] = {
@@ -157,22 +167,23 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
                             'gender': gender
                         }
         else:
-            # Standard Edge TTS configuration using provided genders
-            for speaker in sorted(list(unique_speakers)):
-                match = re.search(r'SPEAKER_(\d+)', speaker)
-                if match:
-                    speaker_id = int(match.group(1))
-                    gender = "female" if speaker_id % 2 == 0 else "male"  # Default fallback
-                    
-                    # Use selected gender if available
-                    if str(speaker_id) in speaker_genders:
-                        gender = speaker_genders[str(speaker_id)]
+            # Standard Edge TTS configuration
+            if len(unique_speakers) > 0:
+                for speaker in sorted(list(unique_speakers)):
+                    match = re.search(r'SPEAKER_(\d+)', speaker)
+                    if match:
+                        speaker_id = int(match.group(1))
+                        gender = "female" if speaker_id % 2 == 0 else "male"  # Default fallback
                         
-                    voice_config[speaker_id] = gender
+                        # Use selected gender if available
+                        if str(speaker_id) in speaker_genders and speaker_genders[str(speaker_id)]:
+                            gender = speaker_genders[str(speaker_id)]
+                            
+                        voice_config[speaker_id] = gender
         
         # Step 7: Generate speech in target language
-        progress(0.7, desc="Generating speech")
-        processing_status[session_id] = {"status": "Generating speech", "progress": 0.7}
+        progress(0.7, desc=f"Generating speech in {target_language}")
+        processing_status[session_id] = {"status": f"Generating speech in {target_language}", "progress": 0.7}
         
         dubbed_audio_path = generate_tts(translated_segments, target_language, voice_config, output_dir="audio2")
         
@@ -224,14 +235,9 @@ def check_api_tokens():
 def create_interface():
     with gr.Blocks(title="SyncDub - Video Translation and Dubbing") as app:
         gr.Markdown("# SyncDub - Video Translation and Dubbing")
-        gr.Markdown("Upload a video or provide a URL, and the system will translate and dub it to your target language.")
+        gr.Markdown("Translate and dub videos to different languages with speaker diarization")
         
-        # Check API tokens
-        api_status = check_api_tokens()
-        if "Warning" in api_status:
-            gr.Markdown(f"⚠️ **{api_status}**", elem_classes=["warning"])
-        
-        session_id = create_session_id()
+        session_id = create_session_id()  # Create a session ID for tracking progress
         
         with gr.Tab("Process Video"):
             with gr.Row():
@@ -239,8 +245,20 @@ def create_interface():
                     media_input = gr.Textbox(label="Video URL or File Upload", placeholder="Enter a YouTube URL or upload a video file")
                     
                     with gr.Row():
+                        # Enhanced language dropdown with full language names
                         target_language = gr.Dropdown(
-                            choices=["hi","en", "es", "fr", "de", "it", "ja", "ko", "pt", "ru", "zh"],
+                            choices=[
+                                ("English", "en"), 
+                                ("Spanish", "es"), 
+                                ("French", "fr"), 
+                                ("German", "de"), 
+                                ("Italian", "it"), 
+                                ("Japanese", "ja"), 
+                                ("Korean", "ko"), 
+                                ("Portuguese", "pt"), 
+                                ("Russian", "ru"), 
+                                ("Chinese", "zh")
+                            ],
                             label="Target Language",
                             value="en"
                         )
@@ -311,8 +329,11 @@ def create_interface():
             def process_with_genders(media_source, target_language, tts_choice, max_speakers, *gender_values):
                 # Convert the gender values into a dictionary to pass to process_video
                 speaker_genders_dict = {str(i): gender for i, gender in enumerate(gender_values) if gender}
-                return process_video(media_source, target_language, tts_choice, max_speakers, 
-                                    speaker_genders_dict, session_id)
+                result = process_video(media_source, target_language, tts_choice, max_speakers, 
+                                      speaker_genders_dict, session_id)
+                
+                # Return the three separate output values that Gradio expects
+                return result.get("video"), result.get("subtitle"), result.get("message")
             
             # Connect the process button
             process_btn.click(
