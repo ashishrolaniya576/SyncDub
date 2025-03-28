@@ -259,11 +259,54 @@ def create_interface():
                     output = gr.Video(label="Dubbed Video")
                     subtitle_download = gr.File(label="Download Subtitles")
             
+            # Create a background thread for status updates
+            def start_status_updates(session_id):
+                def update_status_thread():
+                    import time
+                    while session_id in processing_status and processing_status[session_id]["progress"] < 1.0:
+                        time.sleep(1)  # Update status every second
+                        # This will be checked in the next status_check interval
+                
+                thread = threading.Thread(target=update_status_thread)
+                thread.daemon = True  # Thread will exit when main program exits
+                thread.start()
+                return "Processing started"
+            
+            # Status checking function that doesn't rely on 'every' parameter
+            def check_status(session_id):
+                status = get_processing_status(session_id)
+                return status
+
+            # Add a dummy button to check status (will be triggered by JavaScript)
+            status_check_btn = gr.Button("Check Status", visible=False)
+            
+            # Add JavaScript to periodically click the status check button
+            app.load(
+                fn=None,
+                inputs=None,
+                outputs=None,
+                _js="""
+                function() {
+                    const statusCheckInterval = setInterval(function() {
+                        document.querySelector('#status-check-btn').click();
+                    }, 1000);
+                    // Clean up when the page is closed
+                    window.addEventListener('beforeunload', function() {
+                        clearInterval(statusCheckInterval);
+                    });
+                }
+                """
+            )
+            
+            # Connect the process button to the processing function and status updates
             process_btn.click(
                 fn=process_video, 
                 inputs=[media_input, target_language, tts_choice, max_speakers, gr.State(session_id)],
-                outputs=[gr.JSON()],
-                show_progress=True
+                outputs=[gr.JSON()]
+            ).then(
+                fn=start_status_updates,
+                inputs=[gr.State(session_id)],
+                outputs=[status_text]
             ).then(
                 fn=lambda result: (
                     result.get("video", None) if "error" not in result else None,
@@ -274,18 +317,11 @@ def create_interface():
                 outputs=[output, subtitle_download, status_text]
             )
             
-            # Status checking function
-            def update_status():
-                return get_processing_status(session_id)
-            
-            status_timer = gr.Textbox(visible=False)
-            app.load(lambda: gr.Textbox.update(value="timer"), outputs=status_timer)
-            
-            status_timer.change(
-                fn=update_status,
-                inputs=[],
-                outputs=[status_text],
-                every=1  # Update every second
+            # Connect the status check button to the status checker
+            status_check_btn.click(
+                fn=check_status,
+                inputs=[gr.State(session_id)],
+                outputs=[status_text]
             )
             
         with gr.Tab("Help"):
