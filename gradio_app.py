@@ -285,4 +285,61 @@ def finalize_video(progress=gr.Progress()):
             for speaker_id, config in speaker_configs.items():
                 name = config["name_input"].value
                 name_display = f" ({name})" if name else ""
-               
+                gender = config["gender_input"].value.lower() if hasattr(config["gender_input"], "value") else "male"
+                
+                if config["use_cloning"] and config["ref_audio"] and os.path.exists(config["ref_audio"]):
+                    # Check if user wants to use cloning or fallback
+                    use_cloning_option = True
+                    if config["voice_option_input"] and hasattr(config["voice_option_input"], "value"):
+                        use_cloning_option = config["voice_option_input"].value == "Use voice cloning"
+                    
+                    if use_cloning_option:
+                        # XTTS voice cloning configuration - matches demo.py
+                        voice_config[speaker_id] = {
+                            'engine': 'xtts',
+                            'reference_audio': config["ref_audio"],
+                            'language': target_language
+                            
+                        }
+                        update_status(f"Speaker {speaker_id+1}{name_display}: Using voice cloning with reference audio")
+                    else:
+                        # Fallback to Edge TTS by user choice
+                        voice_config[speaker_id] = {
+                            'engine': 'edge_tts',
+                            'gender': "female" if gender == "female" else "male"
+                        }
+                        update_status(f"Speaker {speaker_id+1}{name_display}: Using Edge TTS ({gender}) - user choice")
+                else:
+                    # Fallback to Edge TTS if no reference audio - matches demo.py
+                    voice_config[speaker_id] = {
+                        'engine': 'edge_tts',
+                        'gender': "female" if gender == "female" else "male"
+                    }
+                    update_status(f"Speaker {speaker_id+1}{name_display}: Using Edge TTS ({gender}) - no reference audio")
+        else:
+            # Standard Edge TTS configuration - EXACTLY matching demo.py
+            for speaker_id, config in speaker_configs.items():
+                name = config["name_input"].value if hasattr(config["name_input"], "value") else ""
+                name_display = f" ({name})" if name else ""
+                gender = config["gender_input"].value.lower() if hasattr(config["gender_input"], "value") else "male"
+                
+                # Simple string format as in demo.py
+                voice_config[speaker_id] = "female" if gender == "female" else "male"
+                update_status(f"Speaker {speaker_id+1}{name_display}: Using Edge TTS ({gender})")
+        
+        # Generate speech in target language
+        update_status("Generating speech audio...")
+        progress(0.3, desc="Generating speech")
+        dubbed_audio_path = generate_tts(translated_segments, target_language, voice_config, output_dir="audio2")
+        
+        # Create video with mixed audio
+        update_status("Creating final video with translated audio...")
+        progress(0.7, desc="Creating video")
+        output_video_path = create_video_with_mixed_audio(video_path, bg_audio_path, dubbed_audio_path)
+        
+        progress(1.0, desc="Complete")
+        return output_video_path, speaker_info["subtitle_file"], update_status("Video dubbing completed successfully!")
+    
+    except Exception as e:
+        logger.exception("Error generating dubbed video")
+        return None, None, update_status(f"Error: {str(e)}")
