@@ -165,7 +165,7 @@ def process_video(video_input, youtube_url, target_language, tts_choice, max_spe
         logger.exception("Error processing video")
         return None, update_status(f"Error: {str(e)}")
 
-# Update this function to make the parameter optional
+# Fix 1: Update create_speaker_ui function to return appropriate components
 def create_speaker_ui(speakers_detected=None):
     """Dynamically create UI elements for speaker configuration based on detected speakers"""
     global speaker_info
@@ -174,10 +174,12 @@ def create_speaker_ui(speakers_detected=None):
     unique_speakers = speaker_info.get("unique_speakers", [])
     
     if not unique_speakers:
-        return [gr.Markdown("No speakers detected.")]
+        return gr.Markdown("No speakers detected.")
     
-    ui_elements = [gr.Markdown(f"### Configure voices for {len(unique_speakers)} detected speakers")]
-    ui_elements.append(gr.Markdown("Add labels to help identify which speaker is which person in your video."))
+    # Create a list of components to return
+    components = []
+    components.append(gr.Markdown(f"### Configure voices for {len(unique_speakers)} detected speakers"))
+    components.append(gr.Markdown("Add labels to help identify which speaker is which person in your video."))
     speaker_configs = {}
     
     for speaker in unique_speakers:
@@ -189,8 +191,8 @@ def create_speaker_ui(speakers_detected=None):
         speaker_label = f"Speaker {speaker_id+1}"
         
         # Create speaker section with divider for visual separation
-        ui_elements.append(gr.Markdown(f"---"))
-        ui_elements.append(gr.Markdown(f"#### {speaker_label}"))
+        components.append(gr.Markdown(f"---"))
+        components.append(gr.Markdown(f"#### {speaker_label}"))
         
         # Add a text field for speaker identification/labeling
         speaker_name = gr.Textbox(
@@ -198,36 +200,37 @@ def create_speaker_ui(speakers_detected=None):
             placeholder="Enter a name or role to identify this speaker",
             value=""
         )
-        ui_elements.append(speaker_name)
+        components.append(speaker_name)
         
-        # Add gender selection for all speakers
+        # Add gender selection for all speakers (exactly matching demo.py approach)
         gender_radio = gr.Radio(
             choices=["Male", "Female"], 
             value="Male",
             label=f"Voice Gender for {speaker_label}"
         )
-        ui_elements.append(gender_radio)
+        components.append(gender_radio)
         
+        # Handle voice cloning option (matching demo.py logic)
         if use_voice_cloning and speaker in reference_files:
             # Reference audio exists for this speaker
             ref_audio = reference_files[speaker]
             # Ensure the file exists
-            if not os.path.exists(ref_audio):
-                os.makedirs(os.path.dirname(ref_audio), exist_ok=True)
-                with open(ref_audio, "w") as f:
-                    f.write("Mock audio file")
-                    
-            ui_elements.append(gr.Audio(value=ref_audio, label="Reference Audio Sample"))
-            voice_option = gr.Dropdown(
-                choices=["Use voice cloning", "Use Edge TTS instead"], 
-                value="Use voice cloning",
-                label=f"Voice Option for {speaker_label}"
-            )
-            ui_elements.append(voice_option)
+            if os.path.exists(ref_audio):
+                components.append(gr.Audio(value=ref_audio, label="Reference Audio Sample"))
+                voice_option = gr.Radio(
+                    choices=["Use voice cloning", "Use Edge TTS"],
+                    value="Use voice cloning",
+                    label=f"Voice Option for {speaker_label}"
+                )
+                components.append(voice_option)
+            else:
+                # No valid reference audio, fallback to Edge TTS
+                components.append(gr.Markdown("*No valid reference audio available for this speaker, falling back to Edge TTS*"))
+                voice_option = None
         else:
             # No reference audio or not using voice cloning
             if use_voice_cloning:
-                ui_elements.append(gr.Markdown("*No reference audio available for this speaker*"))
+                components.append(gr.Markdown("*No reference audio available for this speaker*"))
             voice_option = None
         
         # Store configuration references
@@ -242,7 +245,14 @@ def create_speaker_ui(speakers_detected=None):
     
     speaker_info["speaker_configs"] = speaker_configs
     
-    return ui_elements
+    return components
+
+# Fix 2: Update the tab navigation logic
+def switch_to_tab(tab_name):
+    """Helper function that returns JavaScript to switch to the specified tab"""
+    return f"""
+        document.querySelector("button[data-testid='tab-{tab_name}']").click();
+    """
 
 def finalize_video(progress=gr.Progress()):
     """Generate final dubbed video with configured voices"""
@@ -269,172 +279,10 @@ def finalize_video(progress=gr.Progress()):
         
         # Process speaker configurations from UI inputs
         voice_config = {}
-        for speaker_id, config in speaker_configs.items():
-            # Get name from input component
-            name = config["name_input"].value
-            name_display = f" ({name})" if name else ""
-            
-            # Always get gender selection
-            gender = config["gender_input"].value.lower() if config["gender_input"] else "male"
-            
-            # Determine if using voice cloning or Edge TTS
-            use_cloning_for_speaker = False
-            if use_voice_cloning and config["use_cloning"] and config["ref_audio"]:
-                if config["voice_option_input"] and config["voice_option_input"].value == "Use voice cloning":
-                    use_cloning_for_speaker = True
-            
-            if use_cloning_for_speaker:
-                # XTTS voice cloning configuration
-                voice_config[speaker_id] = {
-                    'engine': 'xtts',
-                    'reference_audio': config["ref_audio"],
-                    'language': target_language,
-                    'gender': gender  # Include gender for potential fallback to Edge TTS
-                }
-                update_status(f"Speaker {speaker_id+1}{name_display}: Using voice cloning (gender: {gender})")
-            else:
-                # Handle simple dubbing mode (for compatibility with original CLI code)
-                if not use_voice_cloning:
-                    # Original simple format for backward compatibility 
-                    # (if your generate_tts function expects just strings for simple mode)
-                    voice_config[speaker_id] = "female" if gender == "female" else "male"
-                    update_status(f"Speaker {speaker_id+1}{name_display}: Using Edge TTS ({gender})")
-                else:
-                    # Extended format for edge TTS when in voice cloning mode
-                    voice_config[speaker_id] = {
-                        'engine': 'edge_tts',
-                        'gender': gender
-                    }
-                    update_status(f"Speaker {speaker_id+1}{name_display}: Using Edge TTS ({gender})")
         
-        # Generate speech in target language
-        update_status("Generating speech audio...")
-        progress(0.3, desc="Generating speech")
-        dubbed_audio_path = generate_tts(translated_segments, target_language, voice_config, output_dir="audio2")
-        
-        # Create video with mixed audio
-        update_status("Creating final video with translated audio...")
-        progress(0.7, desc="Creating video")
-        output_video_path = create_video_with_mixed_audio(video_path, bg_audio_path, dubbed_audio_path)
-        
-        progress(1.0, desc="Complete")
-        return output_video_path, speaker_info["subtitle_file"], update_status("Video dubbing completed successfully!")
-    
-    except Exception as e:
-        logger.exception("Error generating dubbed video")
-        return None, None, update_status(f"Error: {str(e)}")
-
-# Create the Gradio interface
-with gr.Blocks(title="SyncDub - AI Video Dubbing") as app:
-    gr.Markdown("# SyncDub - AI Video Dubbing")
-    gr.Markdown("Translate and dub videos with AI-powered voice cloning")
-    with gr.Tabs() as tabs:
-        with gr.Tab("1. Upload & Process") as tab1:
-            with gr.Row():
-                with gr.Column():
-                    gr.Markdown("### Step 1: Choose your video source")
-                    video_input = gr.Video(label="Upload Video File")
-                    youtube_url = gr.Textbox(label="Or Enter YouTube URL")
-                    
-                    gr.Markdown("### Step 2: Choose target language and settings")
-                    target_language = gr.Dropdown(
-                        choices=list(LANGUAGE_OPTIONS.keys()),
-                        label="Target Language",
-                        value="English"
-                    )
-                    tts_choice = gr.Radio(
-                        choices=["Simple dubbing (Edge TTS)", "Voice cloning (XTTS)"],
-                        label="Voice Generation Method",
-                        value="Simple dubbing (Edge TTS)"
-                    )
-                    max_speakers = gr.Number(
-                        label="Maximum Number of Speakers (Optional)",
-                        value=None,
-                        precision=0
-                    )
-                    process_btn = gr.Button("Process Video")
-                
-                with gr.Column():
-                    transcript_output = gr.Textbox(label="Translation Preview", lines=10)
-                    status_output = gr.Textbox(label="Status", lines=10)
-            
-            # Add a collapsible section for voice configuration that's initially hidden
-            with gr.Accordion("Speaker Voice Configuration", visible=False) as voice_config_accordion:
-                with gr.Column() as voice_config_container:
-                    # Initial placeholder message
-                    placeholder_msg = gr.Markdown("Processing video...")
-                    # The speaker UI will replace this content
-                
-                # Generate button will be shown inside the accordion after configuration
-                generate_btn = gr.Button("Generate Dubbed Video", visible=False, elem_id="generate-btn")
-        
-        # Keep Tab 3 for the final output
-        with gr.Tab("2. Final Output") as tab3:
-            with gr.Row():
-                with gr.Column():
-                    final_status = gr.Textbox(label="Generation Status", lines=10)
-                with gr.Column():
-                    output_video = gr.Video(label="Dubbed Video")
-                    subtitle_download = gr.File(label="Download Subtitles (SRT)")
-    
-    # Connect events
-    process_chain = process_btn.click(
-        fn=process_video,
-        inputs=[video_input, youtube_url, target_language, tts_choice, max_speakers],
-        outputs=[transcript_output, status_output]
-    )
-    
-    # Update the UI in the voice configuration accordion
-    process_chain.success(
-        fn=create_speaker_ui,
-        inputs=[],  # No inputs needed
-        outputs=voice_config_container
-    )
-    
-    # Show the voice configuration accordion after processing is complete
-    process_chain.success(
-        fn=lambda: gr.update(visible=True),
-        inputs=[],
-        outputs=voice_config_accordion
-    )
-    
-    # Show the generate button
-    process_chain.success(
-        fn=lambda: gr.update(visible=True),
-        inputs=[],
-        outputs=generate_btn
-    )
-    
-    # Handle the generate button click
-    generate_chain = generate_btn.click(
-        fn=finalize_video,
-        inputs=[],
-        outputs=[output_video, subtitle_download, final_status]
-    )
-    
-    # Switch to output tab after generation
-    generate_chain.success(
-        fn=lambda: gr.update(selected=True),
-        inputs=[],
-        outputs=tab3
-    )
-
-if __name__ == "__main__":
-    # Check if HF token is available
-    if not hf_token:
-        print("Warning: HUGGINGFACE_TOKEN not found in .env file")
-        print("Speaker diarization may not work properly")
-    
-    # For Kaggle, check and install missing dependencies
-    try:
-        import moviepy.editor
-        print("MoviePy successfully imported")
-    except ImportError:
-        print("Installing missing packages...")
-        import subprocess
-        subprocess.check_call(['pip', 'install', 'moviepy', 'ffmpeg-python'])
-        import moviepy.editor
-        print("MoviePy now successfully imported")
-    
-    # Launch the Gradio app with Kaggle-friendly options
-    app.launch(share=True, server_name="0.0.0.0", server_port=7860)
+        # EXACTLY matching the logic from demo.py:
+        if use_voice_cloning:
+            for speaker_id, config in speaker_configs.items():
+                name = config["name_input"].value
+                name_display = f" ({name})" if name else ""
+               
