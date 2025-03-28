@@ -51,7 +51,7 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
         hf_token = os.getenv("HUGGINGFACE_TOKEN")
         
         if not hf_token:
-            return {"video": None, "subtitle": None, "message": "Error: HUGGINGFACE_TOKEN not found in .env file"}
+            return {"error": True, "message": "Error: HUGGINGFACE_TOKEN not found in .env file"}
         
         # Determine if input is URL or file
         is_url = media_source.startswith(("http://", "https://"))
@@ -191,13 +191,29 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
         progress(0.85, desc="Creating final video")
         processing_status[session_id] = {"status": "Creating final video", "progress": 0.85}
         
-        output_video_path = create_video_with_mixed_audio(video_path, bg_audio_path, dubbed_audio_path)
+        output_video_name = f"temp/output_video_{session_id}.mp4"
+        success = create_video_with_mixed_audio(
+            main_video_path=video_path, 
+            background_music_path=bg_audio_path, 
+            main_audio_path=dubbed_audio_path
+        )
         
+        if not success:
+            raise RuntimeError("Failed to create final video with audio")
+        
+        # Use known output path since function returns boolean
+        output_video_path = os.path.join("temp", "output_video.mp4")
+        
+        # Verify the output video exists
+        if not os.path.exists(output_video_path):
+            raise FileNotFoundError(f"Output video not found at expected path: {output_video_path}")
+            
         # Complete
         progress(1.0, desc="Process completed")
         processing_status[session_id] = {"status": "Completed", "progress": 1.0}
         
         return {
+            "error": False,
             "video": output_video_path,
             "subtitle": subtitle_file,
             "message": "Process completed successfully!"
@@ -206,11 +222,7 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
     except Exception as e:
         logger.exception("Error in processing pipeline")
         processing_status[session_id] = {"status": f"Error: {str(e)}", "progress": -1}
-        return {
-            "video": None,
-            "subtitle": None,
-            "message": f"Error: {str(e)}"
-        }
+        return {"error": True, "message": f"Error: {str(e)}"}
 
 def get_processing_status(session_id):
     """Get the current processing status for the given session"""
