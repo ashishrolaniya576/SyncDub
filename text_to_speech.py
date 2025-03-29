@@ -131,7 +131,7 @@ def smooth_speed_change(audio_path, target_duration):
         if current_duration < 10.0:  # Short audio under 10 seconds
             max_speed = 3.0  # More aggressive for short segments
         else:
-            max_speed = 2.0  # Standard limit for longer audio
+            max_speed = 2.7  # Standard limit for longer audio
             
         min_speed = 0.5  # Allow more slowdown when needed
         
@@ -239,7 +239,7 @@ def create_segmented_edge_tts(text, pitch, voice, output_path, target_duration=N
         
         if abs(current_duration - target_duration) > 0.1:  # 100ms threshold
             speed_factor = current_duration / target_duration
-            speed_factor = min(max(speed_factor, 0.7), 2.0)  # Keep within bounds
+            speed_factor = min(max(speed_factor, 0.7), 3)  # Keep within bounds
             
             logger.info(f"  Adjusting timing: {current_duration:.2f}s → {target_duration:.2f}s (factor: {speed_factor:.2f})")
             
@@ -363,7 +363,7 @@ def create_segmented_xtts(text, reference_audio, language, output_path, target_d
             if abs(current_duration - target_duration) > 0.1:  # 100ms threshold
                 # Calculate speed factor - inverse of duration ratio
                 speed_factor = current_duration / target_duration
-                speed_factor = min(max(speed_factor, 0.7), 2.0)  # Allow wider range for better adjustment
+                speed_factor = min(max(speed_factor, 0.7), 3)  # Allow wider range for better adjustment
                 
                 logger.info(f"  Adjusting timing: {current_duration:.2f}s → {target_duration:.2f}s (speed factor: {speed_factor:.2f})")
                 
