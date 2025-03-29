@@ -314,7 +314,6 @@ def create_interface():
                 with gr.Column(scale=3):
                     # Replace video display with file downloads
                     gr.Markdown("### Output Files")
-                    output_message = gr.Textbox(label="Status", interactive=False)
                     with gr.Row():
                         output = gr.File(label="Download Video")
                         subtitle_output = gr.File(label="Download Subtitles")
@@ -355,14 +354,22 @@ def create_interface():
             def process_with_genders(media_source, target_language, tts_choice, max_speakers, *gender_values):
                 # Convert the gender values into a dictionary to pass to process_video
                 speaker_genders_dict = {str(i): gender for i, gender in enumerate(gender_values) if gender}
+                
+                # Update status immediately
+                status_text.update(value="Starting processing...")
+                
                 result = process_video(media_source, target_language, tts_choice, max_speakers, 
                                       speaker_genders_dict, session_id)
                 
+                # Update status with final result
+                status_message = result.get("message", "An error occurred") if result.get("error", False) else "Process completed successfully! Click on the files to download."
+                status_text.update(value=status_message)
+                
                 # Return the output values based on whether there was an error
                 if result.get("error", False):
-                    return None, None, result.get("message", "An error occurred")
+                    return None, None
                 else:
-                    return result.get("video"), result.get("subtitle"), result.get("message")
+                    return result.get("video"), result.get("subtitle")
             
             # Connect the process button
             process_btn.click(
@@ -375,78 +382,11 @@ def create_interface():
                     # Pass individual radio components, not a Group
                     *[speaker_genders[str(i)] for i in range(8)]
                 ],
-                outputs=[output, subtitle_output, output_message]
+                outputs=[output, subtitle_output]
             )
             
             # Update status periodically
             status_timer = gr.Timer(2, lambda: get_processing_status(session_id), None, status_text)
-            
-            # Create a more compatible approach for status updates
-            def start_status_updates(session_id):
-                def update_status_thread():
-                    import time
-                    while session_id in processing_status and processing_status[session_id]["progress"] < 1.0:
-                        try:
-                            time.sleep(1)  # Update status every second
-                            # This is a workaround since we can't use JavaScript directly
-                        except:
-                            break
-                
-                thread = threading.Thread(target=update_status_thread)
-                thread.daemon = True  # Thread will exit when main program exits
-                thread.start()
-                return "Processing started"
-            
-            # Manual refresh button as a fallback option
-            refresh_btn = gr.Button("Refresh Status")
-            
-            # Status checking function
-            def check_status(session_id):
-                status = get_processing_status(session_id)
-                return status
-            
-            # Connect the refresh button to check status
-            refresh_btn.click(
-                fn=check_status,
-                inputs=[gr.State(session_id)],
-                outputs=[status_text]
-            )
-            
-            # Create a simple auto-refresh component using a Textbox with a timer
-            gr.HTML("""
-            <script>
-            // Simple poller to update status
-            document.addEventListener('DOMContentLoaded', function() {
-                let refreshInterval;
-                
-                // Look for the primary button (Process Video)
-                const processButton = document.querySelector('button.primary');
-                
-                if (processButton) {
-                    // When process starts, begin polling
-                    processButton.addEventListener('click', function() {
-                        if (refreshInterval) clearInterval(refreshInterval);
-                        
-                        // Find the refresh button
-                        const refreshButtons = Array.from(document.querySelectorAll('button'));
-                        const refreshButton = refreshButtons.find(btn => btn.textContent.includes('Refresh Status'));
-                        
-                        if (refreshButton) {
-                            // Start auto-polling every 2 seconds
-                            refreshInterval = setInterval(function() {
-                                refreshButton.click();
-                            }, 2000);
-                            
-                            // Stop polling after 30 minutes (safety)
-                            setTimeout(function() {
-                                if (refreshInterval) clearInterval(refreshInterval);
-                            }, 30*60*1000);
-                        }
-                    });
-                }
-            });
-            </script>
-            """)
             
         with gr.Tab("Help"):
             gr.Markdown("""
