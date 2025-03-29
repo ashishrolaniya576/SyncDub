@@ -6,6 +6,7 @@ import re
 import gradio as gr
 from dotenv import load_dotenv
 import threading
+import shutil
 
 # Add the current directory to path to help with imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -32,6 +33,7 @@ os.makedirs("temp", exist_ok=True)
 os.makedirs("audio", exist_ok=True)
 os.makedirs("audio2", exist_ok=True)
 os.makedirs("reference_audio", exist_ok=True)
+os.makedirs("outputs", exist_ok=True)  # Add directory for downloadable outputs
 
 # Global variables for process tracking
 processing_status = {}
@@ -191,7 +193,6 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
         progress(0.85, desc="Creating final video")
         processing_status[session_id] = {"status": "Creating final video", "progress": 0.85}
         
-        output_video_name = f"temp/output_video_{session_id}.mp4"
         success = create_video_with_mixed_audio(
             main_video_path=video_path, 
             background_music_path=bg_audio_path, 
@@ -207,6 +208,15 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
         # Verify the output video exists
         if not os.path.exists(output_video_path):
             raise FileNotFoundError(f"Output video not found at expected path: {output_video_path}")
+        
+        # Create downloadable copies with unique names
+        file_basename = os.path.basename(video_path).split('.')[0]
+        downloadable_video = f"outputs/{file_basename}_{target_language}_{session_id}.mp4"
+        downloadable_subtitle = f"outputs/{file_basename}_{target_language}_{session_id}.srt"
+        
+        # Copy files to outputs directory for download
+        shutil.copy2(output_video_path, downloadable_video)
+        shutil.copy2(subtitle_file, downloadable_subtitle)
             
         # Complete
         progress(1.0, desc="Process completed")
@@ -214,9 +224,9 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
         
         return {
             "error": False,
-            "video": output_video_path,
-            "subtitle": subtitle_file,
-            "message": "Process completed successfully!"
+            "video": downloadable_video,
+            "subtitle": downloadable_subtitle,
+            "message": "Process completed successfully! Click on the files to download."
         }
         
     except Exception as e:
@@ -302,9 +312,12 @@ def create_interface():
                     status_text = gr.Textbox(label="Status", value="Ready", interactive=False)
                 
                 with gr.Column(scale=3):
-                    output = gr.Video(label="Output Video")
-                    subtitle_output = gr.File(label="Generated Subtitles")
-                    output_message = gr.Textbox(label="Message", interactive=False)
+                    # Replace video display with file downloads
+                    gr.Markdown("### Output Files")
+                    output_message = gr.Textbox(label="Status", interactive=False)
+                    with gr.Row():
+                        output = gr.File(label="Download Video")
+                        subtitle_output = gr.File(label="Download Subtitles")
             
             # Function to update speaker gender options
             def update_speaker_options(max_speakers_value):
@@ -345,8 +358,11 @@ def create_interface():
                 result = process_video(media_source, target_language, tts_choice, max_speakers, 
                                       speaker_genders_dict, session_id)
                 
-                # Return the three separate output values that Gradio expects
-                return result.get("video"), result.get("subtitle"), result.get("message")
+                # Return the output values based on whether there was an error
+                if result.get("error", False):
+                    return None, None, result.get("message", "An error occurred")
+                else:
+                    return result.get("video"), result.get("subtitle"), result.get("message")
             
             # Connect the process button
             process_btn.click(
