@@ -43,7 +43,7 @@ def create_session_id():
     import uuid
     return str(uuid.uuid4())[:8]
 
-def process_video(media_source, target_language, tts_choice, max_speakers, speaker_genders, session_id, progress=gr.Progress()):
+def process_video(media_source, target_language, tts_choice, max_speakers, speaker_genders, session_id, translation_method="batch", progress=gr.Progress()):
     """Main processing function that handles the complete pipeline"""
     global processing_status
     processing_status[session_id] = {"status": "Starting", "progress": 0}
@@ -113,7 +113,7 @@ def process_video(media_source, target_language, tts_choice, max_speakers, speak
         translated_segments = translate_text(
             final_segments, 
             target_lang=target_language,
-            translation_method="batch"
+            translation_method=translation_method
         )
         
         # Generate subtitle file
@@ -291,6 +291,15 @@ def create_interface():
                             value="Simple dubbing (Edge TTS)"
                         )
                     
+                    # Add translation method selection
+                    with gr.Row():
+                        translation_method = gr.Radio(
+                            choices=["batch", "iterative", "groq"],
+                            label="Translation Method",
+                            value="batch",
+                            info="Batch: Faster for longer content. Iterative: May be more accurate for short content. Groq: Uses Groq LLM API."
+                        )
+                    
                     # Speaker count input and update button
                     with gr.Row():
                         max_speakers = gr.Textbox(label="Maximum number of speakers", placeholder="Leave blank for auto")
@@ -352,11 +361,11 @@ def create_interface():
             )
             
             # Function to actually pass the gender values to the process_video function
-            def process_with_genders(media_source, target_language, tts_choice, max_speakers, *gender_values):
+            def process_with_genders(media_source, target_language, tts_choice, max_speakers, translation_method, *gender_values):
                 # Convert the gender values into a dictionary to pass to process_video
                 speaker_genders_dict = {str(i): gender for i, gender in enumerate(gender_values) if gender}
                 result = process_video(media_source, target_language, tts_choice, max_speakers, 
-                                      speaker_genders_dict, session_id)
+                                      speaker_genders_dict, session_id, translation_method=translation_method)
                 
                 # Return the output values based on whether there was an error
                 if result.get("error", False):
@@ -371,7 +380,8 @@ def create_interface():
                     media_input, 
                     target_language, 
                     tts_choice, 
-                    max_speakers, 
+                    max_speakers,
+                    translation_method,  # Add translation method to inputs
                     # Pass individual radio components, not a Group
                     *[speaker_genders[str(i)] for i in range(8)]
                 ],
@@ -458,7 +468,8 @@ def create_interface():
                - **Simple dubbing**: Uses Edge TTS (faster but less natural sounding)
                - **Voice cloning**: Uses XTTS to clone the original speakers' voices (slower but more natural)
             4. **Maximum Speakers**: Optionally specify the maximum number of speakers to detect
-            5. **Process**: Click the Process Video button to start
+            5. **Translation Method**: Choose the translation method (Batch, Iterative, or Groq)
+            6. **Process**: Click the Process Video button to start
             
             ## Requirements
             
