@@ -575,10 +575,10 @@ def create_interface():
                 reset_btn = gr.Button("🗑️ Reset Everything", variant="stop")
                 refresh_btn = gr.Button("Refresh Status")
             
-            # Keep the refresh button click handler
+            # Connect the refresh button to check status
             refresh_btn.click(
-                fn=lambda session_id: get_processing_status(session_id),
-                inputs=[session_id],
+                fn=check_status,
+                inputs=[gr.State(session_id)],
                 outputs=[status_text]
             )
             
