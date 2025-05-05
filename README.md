@@ -42,7 +42,7 @@ SyncDub is a Python application designed to automatically translate and dub vide
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository-url>
+    git clone https://github.com/PranavInani/SyncDub
     cd SyncDub
     ```
 2.  **Create and activate a virtual environment (recommended):**
