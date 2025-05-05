@@ -649,7 +649,7 @@ def create_interface():
             - `HUGGINGFACE_TOKEN`: Required for speech diarization
             
             ## Troubleshooting
-            
+            - This might be slow as huggingface space uses cpu.
             - If you encounter errors, check that all API tokens are set correctly
             - For large videos, the process may take several minutes
             - If voice cloning doesn't sound right, try simple dubbing instead
