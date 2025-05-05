@@ -20,3 +20,4 @@ langchain
 logger
 gradio
 git+https://github.com/openai/whisper.git
+ipython

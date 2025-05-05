@@ -1,32 +1,30 @@
-# .github/workflows/update_space.yml
-name: Deploy Gradio App to Hugging Face Spaces
+name: Run Python script
 
 on:
   push:
     branches:
-      - main # Trigger deployment only on pushes to the main branch
+      - main
 
 jobs:
-  deploy_to_hf_space:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4 # Use the latest version
+    - name: Checkout
+      uses: actions/checkout@v2
 
-      - name: Set up Python 3.9
-        uses: actions/setup-python@v5 # Use the latest version
-        with:
-          python-version: '3.9'
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
 
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt # Assumes gradio is listed in requirements.txt
+    - name: Install Gradio
+      run: python -m pip install gradio
 
-      - name: Deploy to Hugging Face Spaces
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }} # Ensure secret name matches repository secrets
-        run: gradio deploy --title "SyncDub" --app-file gradio_app.py --requirements requirements.txt
-        # If the simple command below works for your linked space, you can use it instead:
-        # run: gradio deploy
+    - name: Log in to Hugging Face
+      run: python -c 'import huggingface_hub; huggingface_hub.login(token="${{ secrets.hf_token }}")'
 
+    - name: Deploy to Hugging Face Spaces
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }} # Add this line
+      run: gradio deploy --title "SyncDub" --app-file gradio_app.py --requirements requirements.txt # Add any other deploy flags you need
