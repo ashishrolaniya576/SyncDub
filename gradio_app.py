@@ -532,20 +532,10 @@ def create_interface():
                 thread.start()
                 return "Processing started"
             
-            # Manual refresh button as a fallback option
-            refresh_btn = gr.Button("Refresh Status")
-            
             # Status checking function
             def check_status(session_id):
                 status = get_processing_status(session_id)
                 return status
-            
-            # Connect the refresh button to check status
-            refresh_btn.click(
-                fn=check_status,
-                inputs=[gr.State(session_id)],
-                outputs=[status_text]
-            )
             
             # Define the handle_reset function here
             def handle_reset():

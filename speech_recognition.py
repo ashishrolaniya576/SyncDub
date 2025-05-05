@@ -11,7 +11,7 @@ class SpeechRecognizer:
         result = self.model.transcribe(
             audio_path,
             language=language,
-            word_timestamps=True,
+            word_timestamps=False,
             verbose=False
         )
         
