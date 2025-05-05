@@ -1,3 +1,9 @@
+---
+title: SyncDub
+app_file: gradio_app.py
+sdk: gradio
+sdk_version: 5.29.0
+---
 # SyncDub
 
 SyncDub is a Python application designed to automatically translate and dub videos into various languages. It leverages speech recognition, speaker diarization, machine translation, and text-to-speech (TTS) technologies to create dubbed versions of input videos while attempting to preserve background audio and optionally clone speaker voices.
