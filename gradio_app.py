@@ -389,7 +389,9 @@ def create_interface():
         with gr.Tab("Process Video"):
             with gr.Row():
                 with gr.Column(scale=2):
-                    media_input = gr.Textbox(label="Video URL or File Upload", placeholder="Enter a YouTube URL or upload a video file")
+                    # Change Textbox to Video component
+                    media_input = gr.Video(label="Video URL or Upload", sources=["upload", "clipboard"], 
+                                           placeholder="Enter a YouTube URL or upload a video file") 
                     
                     with gr.Row():
                         # Enhanced language dropdown with full language names
