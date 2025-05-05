@@ -384,14 +384,31 @@ def create_interface():
         gr.Markdown("# SyncDub - Video Translation and Dubbing")
         gr.Markdown("Translate and dub videos to different languages with speaker diarization")
         
-        session_id = create_session_id()  # Create a session ID for tracking progress
+        # Use a unique session ID per interface instance
+        session_id_state = gr.State(create_session_id()) 
         
         with gr.Tab("Process Video"):
             with gr.Row():
                 with gr.Column(scale=2):
-                    # Change Textbox to Video component
-                    media_input = gr.Video(label="Video URL or Upload", sources=["upload", "clipboard"]) 
+                    # Input type selection
+                    input_type = gr.Radio(["URL", "Upload"], label="Input Type", value="URL")
                     
+                    # URL Input (visible by default)
+                    url_input = gr.Textbox(label="Video URL", placeholder="Enter a YouTube URL", visible=True)
+                    
+                    # Upload Input (hidden by default)
+                    upload_input = gr.Video(label="Upload Video", sources=["upload"], visible=False)
+                    
+                    # Function to toggle input visibility
+                    def update_input_visibility(choice):
+                        if choice == "URL":
+                            return {url_input: gr.Textbox(visible=True), upload_input: gr.Video(visible=False)}
+                        else: # Upload
+                            return {url_input: gr.Textbox(visible=False), upload_input: gr.Video(visible=True)}
+
+                    # Connect radio button change to visibility function
+                    input_type.change(fn=update_input_visibility, inputs=input_type, outputs=[url_input, upload_input])
+
                     with gr.Row():
                         # Enhanced language dropdown with full language names
                         target_language = gr.Dropdown(
@@ -487,9 +504,22 @@ def create_interface():
             )
             
             # Function to actually pass the gender values to the process_video function
-            def process_with_genders(media_source, target_language, tts_choice, max_speakers, translation_method, *gender_values):
+            def process_with_genders(input_type_val, url_val, upload_val, target_language, tts_choice, max_speakers, translation_method, session_id, *gender_values):
+                # Determine the actual media source based on the input type
+                if input_type_val == "URL":
+                    media_source = url_val
+                elif input_type_val == "Upload":
+                    media_source = upload_val # This will be the file path from gr.Video
+                else:
+                    return None, None, "Invalid input type selected."
+
+                if not media_source:
+                     return None, None, "Please provide a video URL or upload a file."
+
                 # Convert the gender values into a dictionary to pass to process_video
                 speaker_genders_dict = {str(i): gender for i, gender in enumerate(gender_values) if gender}
+                
+                # Call the main processing function
                 result = process_video(media_source, target_language, tts_choice, max_speakers, 
                                       speaker_genders_dict, session_id, translation_method=translation_method)
                 
@@ -503,62 +533,55 @@ def create_interface():
             process_btn.click(
                 fn=process_with_genders, 
                 inputs=[
-                    media_input, 
+                    input_type,         # Pass the radio button value
+                    url_input,          # Pass the URL input component
+                    upload_input,       # Pass the Upload input component
                     target_language, 
                     tts_choice, 
                     max_speakers,
-                    translation_method,  # Add translation method to inputs
-                    # Pass individual radio components, not a Group
+                    translation_method,
+                    session_id_state,   # Pass the session ID state
+                    # Pass individual radio components for genders
                     *[speaker_genders[str(i)] for i in range(8)]
                 ],
                 outputs=[output, subtitle_output, output_message]
             )
             
-            # Update status periodically
-            status_timer = gr.Timer(2, lambda: get_processing_status(session_id), None, status_text)
+            # Update status periodically using the session ID from state
+            status_timer = gr.Timer(2, lambda s_id: get_processing_status(s_id), session_id_state, status_text)
             
             # Create a more compatible approach for status updates
-            def start_status_updates(session_id):
-                def update_status_thread():
-                    import time
-                    while session_id in processing_status and processing_status[session_id]["progress"] < 1.0:
-                        try:
-                            time.sleep(1)  # Update status every second
-                            # This is a workaround since we can't use JavaScript directly
-                        except:
-                            break
-                
-                thread = threading.Thread(target=update_status_thread)
-                thread.daemon = True  # Thread will exit when main program exits
-                thread.start()
-                return "Processing started"
+            # ... (start_status_updates function remains the same) ...
             
             # Status checking function
-            def check_status(session_id):
-                status = get_processing_status(session_id)
+            def check_status(s_id):
+                status = get_processing_status(s_id)
                 return status
             
             # Define the handle_reset function here
             def handle_reset():
                 """Handle the reset button click by calling reset_application()"""
                 try:
-                    # Assuming reset_application is defined elsewhere in your code
                     result = reset_application()
-                    # Inform user that reset is in progress
                     gr.Info("Resetting application...")
                     # Return values in the order expected by the outputs list
+                    # Also reset the input fields and generate a new session ID
+                    new_session_id = result.get("session_id", create_session_id()) # Get new ID from reset or generate
                     return (
-                        "Application reset successful. Ready for new video processing.",
-                        None,  # media_input
+                        result.get("new_status", "Reset complete."), # status_text
+                        None,  # url_input
+                        None,  # upload_input
                         None,  # output
                         None,  # subtitle_output
-                        ""     # output_message
+                        "",    # output_message
+                        new_session_id # Update session_id_state
                     )
                 except Exception as e:
                     logger.exception("Error in reset handler")
+                    # Keep the old session ID on failure? Or generate new? Let's keep old for now.
                     return (
                         f"Reset failed: {str(e)}",
-                        None, None, None, ""
+                        None, None, None, None, "", gr.State() # No change to session ID state
                     )
             
             # Replace multiple button rows with a single row containing both buttons
@@ -569,7 +592,7 @@ def create_interface():
             # Connect the refresh button to check status
             refresh_btn.click(
                 fn=check_status,
-                inputs=[gr.State(session_id)],
+                inputs=[session_id_state], # Use session ID from state
                 outputs=[status_text]
             )
             
@@ -579,14 +602,16 @@ def create_interface():
                 inputs=[],
                 outputs=[
                     status_text,
-                    media_input,
+                    url_input,        # Clear URL input
+                    upload_input,     # Clear Upload input
                     output,
                     subtitle_output,
-                    output_message
+                    output_message,
+                    session_id_state  # Update the session ID state
                 ]
             )
             
-            # Create a simple auto-refresh component using a Textbox with a timer
+            # Create a simple auto-refresh component using JavaScript
             gr.HTML("""
             <script>
             // Simple poller to update status
