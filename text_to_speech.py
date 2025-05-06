@@ -441,8 +441,8 @@ def process_voice_config(voice_config):
     edge_female_count = 0
     
     # Pitch variations for multiple Edge TTS speakers of same gender
-    male_pitches = [0, -30, 40]  # Default, deeper, higher
-    female_pitches = [0, 25, -25]  # Default, higher, deeper
+    male_pitches = [0, -50, 50]  # Default, deeper, higher
+    female_pitches = [0, 45, -45]  # Default, higher, deeper
     
     for speaker_id, config in voice_config.items():
         # Convert string speaker_id to int if needed
