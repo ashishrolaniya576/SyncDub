@@ -8,6 +8,9 @@ from dotenv import load_dotenv
 import threading
 import shutil
 
+# Set COQUI_TOS_AGREED to 1 to automatically accept the Terms of Service for Coqui TTS models
+os.environ['COQUI_TOS_AGREED'] = '1'
+
 # Add the current directory to path to help with imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
