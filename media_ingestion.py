@@ -78,7 +78,23 @@ class MediaIngester:
             ]
             
             print(f"Separating audio sources from {os.path.basename(audio_path)}...")
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            try:
+                process = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=False, # Capture as bytes first
+                    check=True # Or handle non-zero exit codes manually
+                )
+                stdout_str = process.stdout.decode('utf-8', errors='replace')
+                stderr_str = process.stderr.decode('utf-8', errors='replace')
+                # Now work with stdout_str and stderr_str
+            except subprocess.CalledProcessError as e:
+                stderr_str = e.stderr.decode('utf-8', errors='replace') if e.stderr else ""
+                logger.error(f"Demucs CLI failed: {stderr_str}")
+                # ... handle error ...
+            except FileNotFoundError:
+                logger.error("Demucs command not found. Ensure it's installed and in PATH.")
+                # ... handle error ...
             print("Separation complete.")
             
             # Demucs creates a subdirectory with model name and then the base name
