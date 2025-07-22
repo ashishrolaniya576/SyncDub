@@ -40,7 +40,7 @@ SyncDub is a Python application designed to automatically translate and dub vide
     *   `gradio`
     *   `python-dotenv`
     *   `demucs`
-*   **API Keys:**
+*   **API Keys: **
     *   `HUGGINGFACE_TOKEN`: Required for `pyannote.audio` speaker diarization models. Obtain from [Hugging Face](https://huggingface.co/settings/tokens).
     *   `GROQ_API_KEY` (Optional): Required if using the "groq" translation method. Obtain from [GroqCloud](https://console.groq.com/keys).
 
